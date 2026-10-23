@@ -39,6 +39,8 @@ Telefonen fästs på navet, hjulet snurras upp och får rulla ut fritt. Gyrot lo
 ## Lagring
 - IndexedDB i telefonens webbläsare (databas `lagertest`, store `runs`). Inställningar i localStorage.
 - Export: CSV per körning (gyro + accelerometer), JSON med alla körningar. Import av JSON.
+- Exporten öppnar systemets delningsmeny (navigator.share med File) där Google Drive kan väljas. JSON-exporten använder redan inlästa körningar så att delningen sker inom klickets användaraktivering (krav i iOS).
+- iOS: Safari och hemskärmsappen har separat lagring. Safari kan rensa webbplatsdata efter ca 7 dagar utan besök, hemskärmsappar skyddas.
 
 ## Uppläggning
 - `deploy-lagertest.bat` (kör `deploy-lagertest.ps1`): installerar git/gh, loggar in, skapar repo `kart-lagertest`, aktiverar Pages. Logg i `deploy-log.txt`.
@@ -46,6 +48,7 @@ Telefonen fästs på navet, hjulet snurras upp och får rulla ut fritt. Gyrot lo
 
 ## Ändringslogg
 Regel: systembeskrivningen uppdateras vid varje kodändring.
+- 2026-10-23c: Export via delningsmenyn (Web Share API med filer) så att CSV/JSON kan sparas direkt i Google Drive eller annan app. Faller tillbaka på nedladdning om delning saknas. JSON-filnamn får datum och klockslag. Rekommenderad mappstruktur i Drive: Kart/Lagertest/Backup (JSON) och Kart/Lagertest/Rådata (CSV).
 - 2026-10-23b: Safari-fix. Rörelsetillstånd (DeviceMotionEvent.requestPermission) begärs nu synkront i själva knapptrycket. Borttagen syntax som äldre Safari inte kan tolka (??=, dateStyle). Ny felsökningslogg på sidan (ES5-skript som fångar alla fel, sensorstatus, första sampel, antal sampel) med knapp för att kopiera loggen.
 - 2026-10-23: J-mätning med fallvikt (friktionskompenserad i samma körning), medelvärde av 3 mätningar, knapp för att använda J.
 - 2026-10-23: Första version. Utrullningsanalys, auto-stopp, lagring, jämförelse, CSV/JSON-export, uppläggningsskript.

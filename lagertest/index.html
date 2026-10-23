@@ -203,7 +203,7 @@ function diag(msg, isErr) {
 }
 window.addEventListener('error', function (e) { diag((e.message || 'okänt fel') + ' @' + (e.lineno || '?') + ':' + (e.colno || '?'), true); });
 window.addEventListener('unhandledrejection', function (e) { var r = e.reason; diag('Ohanterat löfte: ' + (r && (r.name ? r.name + ': ' : '') + (r && r.message || r)), true); });
-diag('Sidversion 2026-10-23b');
+diag('Sidversion 2026-10-23c');
 diag('UA: ' + navigator.userAgent);
 diag('https=' + (window.isSecureContext === true) + ' standalone=' + (navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)));
 document.addEventListener('DOMContentLoaded', function () {
@@ -626,8 +626,24 @@ $('#btnUseJ').addEventListener('click', () => {
 });
 
 /* ---------- export / import ---------- */
+// Dela via systemets delningsmeny (iOS/Android: välj Drive och mapp). Faller tillbaka på vanlig nedladdning.
 function download(name, text, type) {
-  const blob = new Blob([text], { type }); const u = URL.createObjectURL(blob);
+  const blob = new Blob([text], { type });
+  try {
+    const file = new File([blob], name, { type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      diag('Delar ' + name + ' (' + blob.size + ' byte) via delningsmenyn');
+      navigator.share({ files: [file], title: name }).then(
+        () => { diag('Delning klar: ' + name); setStatus('Delad', 'ok'); },
+        e => { diag('Delning avbruten/fel: ' + (e && e.name)); if (e && e.name !== 'AbortError') saveBlob(name, blob); });
+      return;
+    }
+  } catch (e) { diag('Delning ej möjlig: ' + e); }
+  saveBlob(name, blob);
+}
+function saveBlob(name, blob) {
+  diag('Laddar ned ' + name);
+  const u = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = u; a.download = name; document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(u), 5000);
 }
@@ -641,7 +657,11 @@ function exportCsv(run) {
   download(safeName(run.bearing) + '_' + run.created.slice(0, 16).replace(/[:T]/g, '-') + '.csv', L.join('\n'), 'text/csv');
 }
 $('#btnExportAll').addEventListener('click', async () => {
-  const runs = await dbAll(); download('lagertest_alla_' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify({ format: 'lagertest-v1', runs }), 'application/json');
+  // Använd redan inlästa körningar så att delningen sker direkt i klicket (iOS kräver det)
+  const runs = S.lastRuns || await dbAll();
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const stamp = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes());
+  download('lagertest_alla_' + stamp + '.json', JSON.stringify({ format: 'lagertest-v1', exported: d.toISOString(), runs }), 'application/json');
 });
 $('#fileImport').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;

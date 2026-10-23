@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1d2329">
+<title>Lagertest Utrullning</title>
+<style>
+/* Layout: en kolumn, verkstadsverktyg. Stor mätknapp överst, resultat, sparade körningar, jämförelse. */
+:root{
+  --bg:#eef1f3; --panel:#ffffff; --fg:#1b2127; --muted:#5d6872; --line:#d3d9de; --grid:#e3e7ea;
+  --accent:#b86a00; --accent-fg:#ffffff; --s2:#0f7a73; --s3:#6b4fbf; --s4:#b23a48;
+  --ok:#2e7d32; --warn:#a86300; --bad:#b3261e;
+  --sans: system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Consolas,monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#12171b; --panel:#1b2228; --fg:#e6eaed; --muted:#97a3ad; --line:#2d363e; --grid:#242c33;
+  --accent:#f0a43a; --accent-fg:#1a1205; --s2:#3cc4b8; --s3:#a58cf0; --s4:#ef6f7c;
+  --ok:#6cc070; --warn:#f0b452; --bad:#ff8a80; color-scheme: dark; } }
+:root[data-theme="dark"]{
+  --bg:#12171b; --panel:#1b2228; --fg:#e6eaed; --muted:#97a3ad; --line:#2d363e; --grid:#242c33;
+  --accent:#f0a43a; --accent-fg:#1a1205; --s2:#3cc4b8; --s3:#a58cf0; --s4:#ef6f7c;
+  --ok:#6cc070; --warn:#f0b452; --bad:#ff8a80; color-scheme: dark; }
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 var(--sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:calc(env(safe-area-inset-top,0px) + 14px) calc(env(safe-area-inset-bottom,0px) + 40px)}
+main{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{font-size:1.25rem;margin:0;letter-spacing:.01em}
+h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px;font-weight:600}
+.sub{color:var(--muted);font-size:.85rem}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted);min-width:0}
+input,select,textarea{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:9px 10px;width:100%;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);padding:10px 14px}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:650}
+button.danger{color:var(--bad)}
+button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.big{width:100%;padding:18px;font-size:1.15rem}
+.live{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.metric{display:flex;flex-direction:column;gap:2px;min-width:0}
+.metric b{font:600 1.6rem/1.1 var(--mono);font-variant-numeric:tabular-nums}
+.metric span{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+canvas{width:100%;height:190px;display:block}
+canvas.tall{height:230px}
+.pill{display:inline-block;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid currentColor}
+.pill.ok{color:var(--ok)} .pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)} .pill.idle{color:var(--muted)}
+.msg{font-size:.85rem;padding:8px 10px;border-radius:7px;background:var(--bg);border:1px solid var(--line)}
+.msg.warn{border-color:var(--warn)} .msg.bad{border-color:var(--bad)}
+.res{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 14px;margin:10px 0}
+.res div{display:flex;flex-direction:column;min-width:0}
+.res b{font:600 1.05rem var(--mono);font-variant-numeric:tabular-nums}
+.res span{font-size:.72rem;color:var(--muted)}
+.runs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.runs li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.runs li:first-child{border-top:0}
+.runs .t{min-width:0}
+.runs .t b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.runs .t small{color:var(--muted);font-family:var(--mono);font-size:.75rem}
+.runs input[type=checkbox]{width:22px;height:22px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.tblwrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.82rem}
+th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap;font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:600}
+details summary{cursor:pointer;color:var(--muted);font-size:.85rem}
+ol.how{margin:6px 0 0;padding-left:20px;font-size:.88rem;display:flex;flex-direction:column;gap:4px}
+.formula{font-family:var(--mono);font-size:.82rem;color:var(--muted)}
+@media (max-width:380px){ .live{grid-template-columns:1fr 1fr} .res{grid-template-columns:1fr} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Lagertest Utrullning</h1>
+    <span class="sub" id="srcinfo">Sensorer: ej startade</span>
+  </header>
+
+  <section>
+    <h2>Inställningar</h2>
+    <div class="grid2">
+      <label>Lager / test-ID<input id="bearing" placeholder="t.ex. Bakaxel H nytt" autocomplete="off"></label>
+      <label>Tröghetsmoment J (kg·m²)<input id="J" type="number" step="0.001" min="0.001" inputmode="decimal"></label>
+      <label>Däckradie R (m)<input id="R" type="number" step="0.005" min="0.05" inputmode="decimal"></label>
+      <label>Auto-stopp<select id="auto"><option value="1">På (när hjulet stannat)</option><option value="0">Av</option></select></label>
+    </div>
+    <details style="margin-top:10px">
+      <summary>Så gör du</summary>
+      <ol class="how">
+        <li>Pallbock, kedjan av. Fäst telefonen på navet (vinkel spelar ingen roll, gyrot mäter rotation var den än sitter).</li>
+        <li>Tryck <b>Starta mätning</b>, fäst telefonen, snurra upp hjulet till ca 20–25 rad/s (≈ 3–4 varv/s) och släpp.</li>
+        <li>Mätningen stoppar själv 2 s efter att hjulet stannat. Spara med en anteckning.</li>
+        <li>Gör 3 körningar per lager och jämför med samma J.</li>
+      </ol>
+      <p class="formula">T(ω) = −J·dω/dt = J·(a + b·ω). a: konstant friktion (lager, tätning, bromsdrag). b: hastighetsberoende (fett, luft).</p>
+    </details>
+  </section>
+
+  <section>
+    <h2>Mät tröghetsmoment J</h2>
+    <div class="grid2">
+      <label>Fallvikt m (kg)<input id="jm" type="number" step="0.01" min="0.05" inputmode="decimal" placeholder="t.ex. 0.50"></label>
+      <label>Däckomkrets C (cm)<input id="jc" type="number" step="0.1" min="20" inputmode="decimal" placeholder="mät med snöret"></label>
+    </div>
+    <p class="sub" id="jr" style="margin:8px 0 0">Lindningsradie r = C / 2π: –</p>
+    <details style="margin-top:10px">
+      <summary>Så gör du</summary>
+      <ol class="how">
+        <li>Kedjan av, karten på pallbock så att ett bakhjul hänger fritt med minst 1 m fri höjd under.</li>
+        <li>Mät däckets omkrets med själva snöret mitt på slitbanan och skriv in den. Väg vikten (0,5–1 kg passar).</li>
+        <li>Fäst snöret i däcket med en lös tejpbit eller en ögla över ventilen, så att det släpper när det rullats av. Linda upp 1–1,5 m.</li>
+        <li>Fäst telefonen på navet, tryck <b>Starta J-mätning</b>, håll hjulet still och släpp. Låt hjulet rulla fritt efter att snöret släppt.</li>
+        <li>Mätningen stoppar själv 4 s efter toppvarvet. Gör 3 mätningar och använd medelvärdet.</li>
+      </ol>
+      <p class="formula">Fall: (J + m·r²)·α₁ = m·g·r − T_f. Utrullning direkt efter: J·α₂ = T_f. Ger J = m·r·(g − r·α₁) / (α₁ + α₂).</p>
+    </details>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" id="btnJ">Starta J-mätning</button>
+      <span class="metric" style="flex-direction:row;gap:6px;align-items:baseline"><b id="jLive" style="font-size:1.1rem">–</b><span>rad/s</span></span>
+    </div>
+    <p class="msg" id="jMsg" hidden></p>
+    <div id="jRes" hidden>
+      <div class="res" id="jGrid"></div>
+      <canvas id="cvJ"></canvas>
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="btnUseJ">Använd som J</button>
+        <span class="sub" id="jAvg"></span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Mätning <span class="pill idle" id="status">Redo</span></h2>
+    <button class="primary big" id="btnRec">Starta mätning</button>
+    <div class="live">
+      <div class="metric"><b id="lvW">0.0</b><span>ω rad/s</span></div>
+      <div class="metric"><b id="lvV">0</b><span>km/h vid däck</span></div>
+      <div class="metric"><b id="lvHz">–</b><span>Hz sampling</span></div>
+    </div>
+    <canvas id="cvLive"></canvas>
+    <p class="msg" id="liveMsg" hidden></p>
+  </section>
+
+  <section id="secRes" hidden>
+    <h2>Resultat</h2>
+    <p class="msg" id="resMsg" hidden></p>
+    <div class="res" id="resGrid"></div>
+    <canvas id="cvRes"></canvas>
+    <canvas id="cvFit" class="tall" style="margin-top:8px"></canvas>
+    <label style="margin-top:10px">Anteckning<input id="note" placeholder="t.ex. körning 2, 18 °C" autocomplete="off"></label>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" id="btnSave">Spara körning</button>
+      <button id="btnCsvNow">Exportera CSV</button>
+      <button class="danger" id="btnDiscard">Kasta</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sparade körningar</h2>
+    <p class="sub" id="emptyRuns">Inga sparade körningar ännu. Gör en mätning ovan, så hamnar den här. Allt sparas i den här telefonens webbläsare.</p>
+    <ul class="runs" id="runList"></ul>
+    <div class="row" style="margin-top:10px">
+      <button id="btnExportAll">Exportera allt (JSON)</button>
+      <label style="flex-direction:row;align-items:center;gap:6px;color:var(--fg)"><span class="sub">Importera</span><input id="fileImport" type="file" accept=".json,application/json" style="width:auto;padding:4px"></label>
+    </div>
+  </section>
+
+  <section>
+    <details id="diagBox">
+      <summary>Felsökning <span id="diagErr" class="pill bad" hidden>fel</span></summary>
+      <p class="sub" style="margin:8px 0">Om något inte fungerar: tryck på knappen ett par gånger, tryck sedan Kopiera logg och klistra in den i chatten.</p>
+      <pre id="diagLog" style="font:11px/1.4 var(--mono);white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:8px;margin:0"></pre>
+      <div class="row" style="margin-top:8px"><button id="btnDiag">Kopiera logg</button><span class="sub" id="diagCopied"></span></div>
+    </details>
+  </section>
+
+  <section id="secCmp" hidden>
+    <h2>Jämförelse</h2>
+    <canvas id="cvCmp" class="tall"></canvas>
+    <p class="sub" id="cmpNote"></p>
+    <div class="tblwrap"><table id="cmpTbl"></table></div>
+  </section>
+</main>
+
+<script>
+/* Felsökningslogg. Skriven i enkel ES5 så att den fungerar även om huvudskriptet inte går att tolka. */
+var DIAG = [];
+function diag(msg, isErr) {
+  var d = new Date(), ts = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2) + '.' + ('00' + d.getMilliseconds()).slice(-3);
+  DIAG.push(ts + (isErr ? ' FEL ' : ' ') + msg);
+  if (DIAG.length > 300) DIAG.shift();
+  var el = document.getElementById('diagLog'); if (el) el.textContent = DIAG.join('\n');
+  if (isErr) { var p = document.getElementById('diagErr'); if (p) p.hidden = false; var b = document.getElementById('diagBox'); if (b) b.open = true; }
+}
+window.addEventListener('error', function (e) { diag((e.message || 'okänt fel') + ' @' + (e.lineno || '?') + ':' + (e.colno || '?'), true); });
+window.addEventListener('unhandledrejection', function (e) { var r = e.reason; diag('Ohanterat löfte: ' + (r && (r.name ? r.name + ': ' : '') + (r && r.message || r)), true); });
+diag('Sidversion 2026-10-23b');
+diag('UA: ' + navigator.userAgent);
+diag('https=' + (window.isSecureContext === true) + ' standalone=' + (navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)));
+document.addEventListener('DOMContentLoaded', function () {
+  var el = document.getElementById('diagLog'); if (el) el.textContent = DIAG.join('\n');
+  var b = document.getElementById('btnDiag');
+  if (b) b.addEventListener('click', function () {
+    var txt = DIAG.join('\n'), note = document.getElementById('diagCopied');
+    function sel() { var r = document.createRange(); r.selectNodeContents(el); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); if (note) note.textContent = 'Markerad – tryck Kopiera'; }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(function () { if (note) note.textContent = 'Kopierad'; }, sel); else sel();
+  });
+  setTimeout(function () { if (!window.__mainOK) diag('Huvudskriptet startade inte. Webbläsaren är troligen för gammal (iOS äldre än 14?).', true); }, 1500);
+});
+</script>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const D2R = Math.PI / 180;
+const SERIES = ['--accent', '--s2', '--s3', '--s4'];
+
+/* ---------- inställningar (localStorage, per telefon) ---------- */
+const DEF = { bearing: '', J: 0.06, R: 0.14, auto: '1' };
+function loadSet() { try { return Object.assign({}, DEF, JSON.parse(localStorage.getItem('lt_set') || '{}')); } catch { return { ...DEF }; } }
+function saveSet() { try { localStorage.setItem('lt_set', JSON.stringify(curSet())); } catch {} }
+function curSet() { return { bearing: $('#bearing').value.trim(), J: +$('#J').value || DEF.J, R: +$('#R').value || DEF.R, auto: $('#auto').value }; }
+(() => { const s = loadSet(); $('#bearing').value = s.bearing; $('#J').value = s.J; $('#R').value = s.R; $('#auto').value = s.auto; })();
+['#bearing', '#J', '#R', '#auto'].forEach(id => $(id).addEventListener('change', saveSet));
+
+/* ---------- IndexedDB ---------- */
+let dbp = null;
+function idb() {
+  if (dbp) return dbp;
+  dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('lagertest', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('runs', { keyPath: 'id' });
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+  return dbp;
+}
+async function tx(mode, fn) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const t = db.transaction('runs', mode); const st = t.objectStore('runs');
+    const out = fn(st); t.oncomplete = () => res(out && out.result !== undefined ? out.result : out); t.onerror = () => rej(t.error);
+  });
+}
+const dbAll = () => tx('readonly', st => st.getAll());
+const dbPut = run => tx('readwrite', st => st.put(run));
+const dbDel = id => tx('readwrite', st => st.delete(id));
+
+/* ---------- inspelning ---------- */
+const S = { rec: false, g: null, a: null, t0: null, src: '', stopFns: [], wake: null, armSince: null, armed: false, lowSince: null, lastT: 0, run: null };
+function newStream() { return { t: [], x: [], y: [], z: [] }; }
+
+function onGyroSample(tms, x, y, z) {
+  if (!S.rec) return;
+  if (S.t0 === null) S.t0 = tms;
+  const t = (tms - S.t0) / 1000;
+  const g = S.g; g.t.push(t); g.x.push(x); g.y.push(y); g.z.push(z);
+  S.lastT = t;
+  const w = Math.hypot(x, y, z);
+  if (S.mode === 'inertia') {
+    if (w > S.peak) { S.peak = w; S.tPeak = t; }
+    if (S.peak > 3 && w < 0.85 * S.peak && t - S.tPeak > 4) stopRec();
+    if (t > 120) stopRec();
+    return;
+  }
+  if ($('#auto').value === '1') {
+    if (!S.armed) { if (w > 8) { if (S.armSince === null) S.armSince = t; if (t - S.armSince > 0.5) { S.armed = true; diag('Auto-stopp armerat vid t=' + t.toFixed(2)); } } else S.armSince = null; }
+    else { if (w < 0.5) { if (S.lowSince === null) S.lowSince = t; if (t - S.lowSince > 2) stopRec(); } else S.lowSince = null; }
+  }
+  if (t > 240) stopRec();
+}
+function onAccSample(tms, x, y, z) {
+  if (!S.rec || S.t0 === null) return;
+  const a = S.a; a.t.push((tms - S.t0) / 1000); a.x.push(x); a.y.push(y); a.z.push(z);
+}
+
+async function startGeneric() {
+  if (!('Gyroscope' in window)) return false;
+  try {
+    if (navigator.permissions) {
+      for (const n of ['gyroscope', 'accelerometer']) {
+        const p = await navigator.permissions.query({ name: n }).catch(() => null);
+        if (p && p.state === 'denied') return false;
+      }
+    }
+    const gy = new Gyroscope({ frequency: 200 });
+    await new Promise((res, rej) => {
+      const to = setTimeout(() => rej(new Error('timeout')), 2000);
+      gy.addEventListener('error', e => { clearTimeout(to); rej(e.error || new Error('sensorfel')); }, { once: true });
+      gy.addEventListener('reading', () => { clearTimeout(to); res(); }, { once: true });
+      gy.start();
+    });
+    gy.addEventListener('reading', () => onGyroSample(gy.timestamp, gy.x, gy.y, gy.z));
+    S.stopFns.push(() => gy.stop());
+    try {
+      const Acc = window.LinearAccelerationSensor || window.Accelerometer;
+      const ac = new Acc({ frequency: 200 });
+      ac.addEventListener('reading', () => onAccSample(ac.timestamp, ac.x, ac.y, ac.z));
+      ac.start(); S.stopFns.push(() => ac.stop());
+    } catch {}
+    S.src = 'Generic Sensor API';
+    return true;
+  } catch { return false; }
+}
+async function startMotion(permP) {
+  if (typeof DeviceMotionEvent === 'undefined') throw new Error('Webbläsaren saknar rörelsesensorer (DeviceMotionEvent finns inte).');
+  if (permP || typeof DeviceMotionEvent.requestPermission === 'function') {
+    let r;
+    try { r = await (permP || DeviceMotionEvent.requestPermission()); }
+    catch (e) { diag('requestPermission kastade: ' + (e && (e.name + ': ' + e.message))); throw new Error('Safari gav inte tillgång till rörelsesensorerna (' + (e && e.name) + '). Stäng fliken, öppna sidan igen och tryck Tillåt i rutan som dyker upp.'); }
+    diag('requestPermission svar: ' + r);
+    if (r !== 'granted') throw new Error('Tillgång till rörelse nekades. På iPhone: Inställningar → Appar → Safari → Avancerat → Webbplatsdata, ta bort github.io, öppna sidan igen och tryck Tillåt.');
+  }
+  let first = true, nullRR = 0;
+  const h = e => {
+    const rr = e.rotationRate;
+    if (first) { first = false; diag('Första devicemotion: rotationRate=' + (rr ? [rr.alpha, rr.beta, rr.gamma].map(v => v === null ? 'null' : (+v).toFixed(2)).join(',') : 'null') + ' interval=' + e.interval + ' ms'); }
+    if (!rr || rr.alpha === null) { if (++nullRR === 50) diag('rotationRate saknas i 50 händelser – enheten rapporterar inget gyro'); return; }
+    onGyroSample(e.timeStamp, (rr.beta || 0) * D2R, (rr.gamma || 0) * D2R, (rr.alpha || 0) * D2R);
+    const ac = e.acceleration && e.acceleration.x !== null ? e.acceleration : e.accelerationIncludingGravity;
+    if (ac) onAccSample(e.timeStamp, ac.x || 0, ac.y || 0, ac.z || 0);
+  };
+  window.addEventListener('devicemotion', h);
+  S.stopFns.push(() => window.removeEventListener('devicemotion', h));
+  S.src = 'DeviceMotion';
+}
+
+async function startRec(mode, permP) {
+  diag('Start ' + mode + ', secure=' + window.isSecureContext + ', DeviceMotion=' + (typeof DeviceMotionEvent) + ', requestPermission=' + (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission) + ', Gyroscope=' + ('Gyroscope' in window));
+  if (!window.isSecureContext) { showLive('Sidan måste öppnas via https:// för att sensorerna ska fungera.', 'bad'); return; }
+  if (mode === 'inertia' && !(jParams())) { showJ('Fyll i fallvikt och däckomkrets först.', 'bad'); return; }
+  S.mode = mode; S.peak = 0; S.tPeak = 0;
+  S.g = newStream(); S.a = newStream(); S.t0 = null; S.stopFns = []; S.armed = false; S.armSince = null; S.lowSince = null; S.lastT = 0;
+  showLive('', null); showJ('', null);
+  try {
+    // iOS: permission måste begäras direkt i klicket, så prova DeviceMotion först där
+    if (permP) await startMotion(permP);
+    else if (!(await startGeneric())) await startMotion(null);
+  } catch (e) { diag('Start misslyckades: ' + (e.message || e)); (mode === 'inertia' ? showJ : showLive)(e.message || String(e), 'bad'); return; }
+  diag('Sensorkälla: ' + S.src);
+  S.rec = true;
+  try { S.wake = await navigator.wakeLock?.request('screen'); } catch { S.wake = null; }
+  $('#srcinfo').textContent = 'Sensorer: ' + S.src;
+  setStatus('Spelar in', 'warn');
+  if (mode === 'inertia') { $('#btnJ').textContent = 'Stoppa J-mätning'; $('#btnRec').disabled = true; $('#jRes').hidden = true; }
+  else { $('#btnRec').textContent = 'Stoppa mätning'; $('#btnJ').disabled = true; $('#secRes').hidden = true; }
+  setTimeout(() => { diag('Efter 2,5 s: ' + S.g.t.length + ' gyro-, ' + S.a.t.length + ' acc-sampel'); if (S.rec && S.g.t.length < 5) (mode === 'inertia' ? showJ : showLive)('Inga gyrovärden kommer in. Kontrollera att webbläsaren får använda rörelsesensorer.', 'bad'); }, 2500);
+  requestAnimationFrame(liveLoop);
+}
+function stopRec() {
+  if (!S.rec) return;
+  S.rec = false;
+  S.stopFns.forEach(f => { try { f(); } catch {} });
+  try { S.wake?.release(); } catch {}
+  try { navigator.vibrate?.(250); } catch {}
+  $('#btnRec').textContent = 'Starta mätning'; $('#btnJ').textContent = 'Starta J-mätning';
+  $('#btnRec').disabled = false; $('#btnJ').disabled = false;
+  setStatus('Klar', 'ok');
+  if (S.mode === 'inertia') { showInertia({ g: S.g, src: S.src }); return; }
+  const set = curSet();
+  S.run = { id: 'r' + Date.now(), created: new Date().toISOString(), bearing: set.bearing || 'Namnlöst', note: '', J: set.J, R: set.R, src: S.src, g: S.g, a: S.a };
+  showResult(S.run, true);
+}
+// iOS: requestPermission måste anropas synkront i själva klicket, före allt annat
+function permNow() {
+  try { if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') return DeviceMotionEvent.requestPermission(); }
+  catch (e) { diag('requestPermission (synkront) kastade: ' + e); }
+  return null;
+}
+$('#btnRec').addEventListener('click', () => { if (S.rec) return stopRec(); const p = permNow(); startRec('coast', p); });
+$('#btnJ').addEventListener('click', () => { if (S.rec) return stopRec(); const p = permNow(); startRec('inertia', p); });
+document.addEventListener('visibilitychange', async () => {
+  if (S.rec && document.visibilityState === 'visible' && !S.wake) { try { S.wake = await navigator.wakeLock?.request('screen'); } catch {} }
+});
+
+function setStatus(t, cls) { const p = $('#status'); p.textContent = t; p.className = 'pill ' + cls; }
+function showLive(t, cls) { const m = $('#liveMsg'); m.hidden = !t; m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+
+function liveLoop() {
+  const g = S.g; const n = g.t.length;
+  if (n) {
+    const w = Math.hypot(g.x[n - 1], g.y[n - 1], g.z[n - 1]);
+    $('#lvW').textContent = w.toFixed(1);
+    if (S.mode === 'inertia') $('#jLive').textContent = w.toFixed(1);
+    $('#lvV').textContent = (w * (+$('#R').value || DEF.R) * 3.6).toFixed(0);
+    let k = n - 1; while (k > 0 && g.t[n - 1] - g.t[k] < 1) k--;
+    const span = g.t[n - 1] - g.t[k]; if (span > 0.2) $('#lvHz').textContent = Math.round((n - 1 - k) / span);
+    const xs = [], ys = []; const tEnd = g.t[n - 1];
+    let i = n - 1; while (i > 0 && tEnd - g.t[i] < 10) i--;
+    const step = Math.max(1, Math.floor((n - i) / 400));
+    for (let j = i; j < n; j += step) { xs.push(g.t[j]); ys.push(Math.hypot(g.x[j], g.y[j], g.z[j])); }
+    chart($('#cvLive'), [{ xs, ys, color: '--accent' }], { xl: 't (s)', yl: 'ω (rad/s)', ymin: 0 });
+    if (S.armed && $('#auto').value === '1' && S.mode === 'coast') setStatus('Utrullning pågår', 'warn');
+  }
+  if (S.rec) requestAnimationFrame(liveLoop);
+}
+
+/* ---------- analys ---------- */
+function analyze(run) {
+  const g = run.g, J = run.J, n = g.t.length;
+  if (n < 30) return { ok: false, msg: 'För få mätpunkter (' + n + ').' };
+  const raw = g.t.map((_, i) => Math.hypot(g.x[i], g.y[i], g.z[i]));
+  const T = g.t[n - 1], dt = 0.02, N = Math.floor(T / dt) + 1;
+  const w = new Float64Array(N); let j = 0;
+  for (let k = 0; k < N; k++) {
+    const tt = k * dt; while (j < n - 2 && g.t[j + 1] < tt) j++;
+    const t1 = g.t[j], t2 = g.t[j + 1]; const f = t2 > t1 ? Math.min(1, Math.max(0, (tt - t1) / (t2 - t1))) : 0;
+    w[k] = raw[j] + (raw[j + 1] - raw[j]) * f;
+  }
+  const h = 4, s = new Float64Array(N);
+  for (let k = 0; k < N; k++) { let a = 0, c = 0; for (let q = Math.max(0, k - h); q <= Math.min(N - 1, k + h); q++) { a += w[q]; c++; } s[k] = a / c; }
+  let ip = 0; for (let k = 1; k < N; k++) if (s[k] > s[ip]) ip = k;
+  const peak = s[ip];
+  const fs = (n - 1) / T;
+  const base = { dt, s, ip, peak, fs, N };
+  if (peak < 5) return { ...base, ok: false, msg: 'Toppvarvet blev ' + peak.toFixed(1) + ' rad/s. Snurra upp till minst 10 rad/s.' };
+  const hi = peak * 0.95, lo = Math.max(1.5, 0.08 * peak);
+  let i0 = ip; while (i0 < N - 1 && s[i0] > hi) i0++;
+  let i1 = i0; while (i1 < N - 1 && s[i1] > lo) i1++;
+  const m = 5;
+  if (i1 - i0 < 3 * m) return { ...base, ok: false, msg: 'Utrullningen blev för kort att analysera. Låt hjulet rulla ut fritt.' };
+  const px = [], py = [];
+  for (let k = i0 + m; k <= i1 - m; k++) { px.push(s[k]); py.push(-(s[k + m] - s[k - m]) / (2 * m * dt)); }
+  const L = px.length; let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (let k = 0; k < L; k++) { sx += px[k]; sy += py[k]; sxx += px[k] * px[k]; sxy += px[k] * py[k]; }
+  const den = L * sxx - sx * sx;
+  const b = den ? (L * sxy - sx * sy) / den : 0, a = (sy - b * sx) / L;
+  let ssr = 0, sst = 0; const my = sy / L;
+  for (let k = 0; k < L; k++) { const e = py[k] - (a + b * px[k]); ssr += e * e; sst += (py[k] - my) ** 2; }
+  const r2 = sst > 0 ? 1 - ssr / sst : 0;
+  const cross = lv => { for (let k = ip; k < N; k++) if (s[k] <= lv) return k * dt; return null; };
+  let wHi = peak >= 26 ? 25 : Math.floor(peak * 0.9), wLo = 5;
+  if (wHi <= 8) wLo = Math.max(1, Math.round(wHi * 0.4));
+  const tH = cross(wHi), tL = cross(wLo);
+  const coast = tH !== null && tL !== null ? tL - tH : null;
+  const wRef = 15;
+  const T15 = J * (a + b * wRef);
+  let rawMax = 0; for (const v of raw) if (v > rawMax) rawMax = v;
+  let nearMax = 0; for (const v of raw) if (v > rawMax * 0.995) nearMax++;
+  const sat = rawMax > 20 && nearMax > 8;
+  const v50 = 50 / 3.6, w50 = v50 / run.R;
+  const P50 = J * (a + b * w50) * w50;
+  return { ...base, ok: true, a, b, r2, Tc: J * a, cv: J * b, T15, extrap15: peak * 0.95 < wRef, coast, wHi, wLo, P50, w50, sat,
+           seg: [i0 * dt, i1 * dt], px, py };
+}
+
+function fmt(v, d = 3) { return v === null || v === undefined || !isFinite(v) ? '–' : (Math.abs(v) < 0.01 && v !== 0 ? v.toExponential(2) : v.toFixed(d)); }
+
+function showResult(run, fresh) {
+  const r = analyze(run);
+  run.res = r.ok ? { peak: r.peak, a: r.a, b: r.b, r2: r.r2, T15: r.T15, coast: r.coast, wHi: r.wHi, wLo: r.wLo, P50: r.P50, fs: r.fs, sat: r.sat } : null;
+  $('#secRes').hidden = false;
+  const msgs = [];
+  if (!r.ok) msgs.push([r.msg, 'bad']);
+  if (r.ok && r.sat) msgs.push(['Gyrot verkar ha mättat nära toppvarvet (' + r.peak.toFixed(1) + ' rad/s). Analysen använder bara delen under 95 % av toppen, men snurra gärna lite långsammare nästa gång.', 'warn']);
+  if (r.ok && r.r2 < 0.5) msgs.push(['Låg anpassning (R² = ' + r.r2.toFixed(2) + '). Kontrollera att hjulet rullade fritt utan att något bromsade ojämnt.', 'warn']);
+  if (r.ok && r.extrap15) msgs.push(['Toppvarvet var under 15 rad/s, så T vid 15 rad/s är extrapolerat.', 'warn']);
+  const rm = $('#resMsg'); rm.hidden = !msgs.length; rm.className = 'msg' + (msgs.length ? ' ' + msgs[0][1] : '');
+  rm.textContent = msgs.map(m => m[0]).join(' ');
+  const G = $('#resGrid'); G.innerHTML = '';
+  const add = (v, l) => { const d = document.createElement('div'); const b = document.createElement('b'); b.textContent = v; const s = document.createElement('span'); s.textContent = l; d.append(b, s); G.append(d); };
+  if (r.ok) {
+    add(fmt(r.T15 * 1000, 1) + ' mNm', 'Friktionsmoment vid 15 rad/s');
+    add(fmt(r.coast, 1) + ' s', 'Utrullning ' + r.wHi + ' → ' + r.wLo + ' rad/s');
+    add(fmt(r.a, 3) + ' s⁻²', 'a (konstant del)');
+    add(fmt(r.b, 4) + ' s⁻¹', 'b (hastighetsberoende)');
+    add(fmt(r.P50, 1) + ' W', 'Förlust vid 50 km/h (extrapolerat)');
+    add(r.r2.toFixed(3), 'R², linjär anpassning');
+  }
+  add(r.peak ? r.peak.toFixed(1) + ' rad/s' : '–', 'Toppvarv');
+  add(r.fs ? Math.round(r.fs) + ' Hz' : '–', 'Sampling (' + run.src + ')');
+  if (r.s) {
+    const xs = [], ys = []; const st = Math.max(1, Math.floor(r.N / 600));
+    for (let k = 0; k < r.N; k += st) { xs.push(k * r.dt); ys.push(r.s[k]); }
+    const sets = [{ xs, ys, color: '--accent' }];
+    if (r.ok) { const sx2 = [], sy2 = []; for (let k = 0; k < xs.length; k++) if (xs[k] >= r.seg[0] && xs[k] <= r.seg[1]) { sx2.push(xs[k]); sy2.push(ys[k]); } sets.push({ xs: sx2, ys: sy2, color: '--s2', width: 3 }); }
+    chart($('#cvRes'), sets, { xl: 't (s)', yl: 'ω (rad/s)', ymin: 0, legend: r.ok ? [['--accent', 'ω'], ['--s2', 'analyserad del']] : null });
+  }
+  if (r.ok) {
+    const st = Math.max(1, Math.floor(r.px.length / 500)); const xs = [], ys = [];
+    for (let k = 0; k < r.px.length; k += st) { xs.push(r.px[k]); ys.push(r.py[k]); }
+    let xmax = 0; for (const v of r.px) xmax = Math.max(xmax, v);
+    chart($('#cvFit'), [{ xs, ys, color: '--muted', dots: true }, { xs: [0, xmax], ys: [r.a, r.a + r.b * xmax], color: '--accent', width: 2 }],
+      { xl: 'ω (rad/s)', yl: '−dω/dt (rad/s²)', xmin: 0, ymin: 0, legend: [['--muted', 'mätning'], ['--accent', 'a + b·ω']] });
+    $('#cvFit').hidden = false;
+  } else $('#cvFit').hidden = true;
+  $('#note').value = run.note || '';
+  $('#btnSave').hidden = !fresh; $('#btnDiscard').hidden = !fresh;
+  S.view = run;
+  if (fresh) $('#secRes').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'auto' : 'smooth' });
+}
+
+$('#btnSave').addEventListener('click', async () => {
+  const run = S.view; if (!run) return;
+  run.note = $('#note').value.trim();
+  try { await dbPut(run); setStatus('Sparad', 'ok'); $('#btnSave').hidden = true; $('#btnDiscard').hidden = true; await renderRuns(); }
+  catch (e) { setStatus('Kunde inte spara', 'bad'); showLive('Sparning misslyckades: ' + (e.message || e) + '. Exportera CSV som reserv.', 'bad'); }
+});
+let discardArm = 0;
+$('#btnDiscard').addEventListener('click', () => {
+  const b = $('#btnDiscard');
+  if (Date.now() - discardArm < 3000) { $('#secRes').hidden = true; S.view = null; S.run = null; b.textContent = 'Kasta'; setStatus('Redo', 'idle'); return; }
+  discardArm = Date.now(); b.textContent = 'Tryck igen för att kasta';
+  setTimeout(() => { b.textContent = 'Kasta'; }, 3000);
+});
+$('#btnCsvNow').addEventListener('click', () => { if (S.view) exportCsv(S.view); });
+
+/* ---------- tröghetsmoment J (fallvikt) ---------- */
+const G0 = 9.81;
+function jParams() {
+  const m = +$('#jm').value, C = +$('#jc').value;
+  if (!(m > 0) || !(C > 0)) return null;
+  return { m, r: C / 100 / (2 * Math.PI) };
+}
+function updJr() { const p = jParams(); $('#jr').textContent = 'Lindningsradie r = C / 2π: ' + (p ? (p.r * 1000).toFixed(1) + ' mm' : '–'); try { localStorage.setItem('lt_jin', JSON.stringify({ m: $('#jm').value, c: $('#jc').value })); } catch {} }
+try { const v = JSON.parse(localStorage.getItem('lt_jin') || '{}'); if (v.m) $('#jm').value = v.m; if (v.c) $('#jc').value = v.c; } catch {}
+['#jm', '#jc'].forEach(id => $(id).addEventListener('input', updJr)); updJr();
+function showJ(t, cls) { const m = $('#jMsg'); m.hidden = !t; m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+
+function prep(g) {
+  const n = g.t.length; if (n < 30) return null;
+  const raw = g.t.map((_, i) => Math.hypot(g.x[i], g.y[i], g.z[i]));
+  const T = g.t[n - 1], dt = 0.02, N = Math.floor(T / dt) + 1;
+  const w = new Float64Array(N); let j = 0;
+  for (let k = 0; k < N; k++) {
+    const tt = k * dt; while (j < n - 2 && g.t[j + 1] < tt) j++;
+    const t1 = g.t[j], t2 = g.t[j + 1]; const f = t2 > t1 ? Math.min(1, Math.max(0, (tt - t1) / (t2 - t1))) : 0;
+    w[k] = raw[j] + (raw[j + 1] - raw[j]) * f;
+  }
+  const h = 4, s = new Float64Array(N);
+  for (let k = 0; k < N; k++) { let a = 0, c = 0; for (let q = Math.max(0, k - h); q <= Math.min(N - 1, k + h); q++) { a += w[q]; c++; } s[k] = a / c; }
+  let ip = 0; for (let k = 1; k < N; k++) if (s[k] > s[ip]) ip = k;
+  return { dt, s, N, ip, peak: s[ip], fs: (n - 1) / T, raw };
+}
+function linfit(xs, ys) {
+  const L = xs.length; let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (let k = 0; k < L; k++) { sx += xs[k]; sy += ys[k]; sxx += xs[k] * xs[k]; sxy += xs[k] * ys[k]; }
+  const den = L * sxx - sx * sx; const b = den ? (L * sxy - sx * sy) / den : 0, a = (sy - b * sx) / L;
+  let ssr = 0, sst = 0; const my = sy / L;
+  for (let k = 0; k < L; k++) { ssr += (ys[k] - a - b * xs[k]) ** 2; sst += (ys[k] - my) ** 2; }
+  return { a, b, r2: sst > 0 ? 1 - ssr / sst : 0 };
+}
+function analyzeInertia(g, m, r, fb) {
+  const P = prep(g); if (!P) return { ok: false, msg: 'För få mätpunkter.' };
+  const { s, dt, N, ip, peak } = P;
+  if (peak < 3) return { ...P, ok: false, msg: 'Hjulet nådde bara ' + peak.toFixed(1) + ' rad/s. Använd tyngre vikt eller längre snöre.' };
+  let kB = ip; while (kB > 0 && s[kB] > 0.85 * peak) kB--;
+  let kA = kB; while (kA > 0 && s[kA] > 0.15 * peak) kA--;
+  if (kB - kA < 8) return { ...P, ok: false, msg: 'Fallet blev för kort att analysera (under 0,2 s). Linda upp mer snöre eller använd lättare vikt.' };
+  const tx1 = [], wy1 = []; for (let k = kA; k <= kB; k++) { tx1.push(k * dt); wy1.push(s[k]); }
+  const f1 = linfit(tx1, wy1); const a1 = f1.b;
+  const warns = [];
+  let a2 = null, src2 = '', seg2 = null;
+  const k0 = ip + Math.round(0.3 / dt); let k1 = k0;
+  while (k1 < N - 1 && s[k1] > 0.3 * peak && (k1 - k0) * dt < 2.5) k1++;
+  if (k0 < N && k1 - k0 >= Math.round(0.5 / dt)) {
+    const tx2 = [], wy2 = []; for (let k = k0; k <= k1; k++) { tx2.push(k * dt); wy2.push(s[k]); }
+    const f2 = linfit(tx2, wy2); const d = -f2.b;
+    if (d > 0 && d < 0.5 * a1) { a2 = d; src2 = 'uppmätt efter släpp'; seg2 = [k0 * dt, k1 * dt, f2]; }
+    else if (d >= 0.5 * a1) warns.push('Hjulet bromsades kraftigt efter toppen. Snöret verkar inte ha släppt, så friktionen kunde inte mätas i samma körning.');
+  } else warns.push('Ingen fri utrullning efter toppen syntes.');
+  if (a2 === null && fb) { a2 = fb.a + fb.b * (peak / 2); src2 = 'från senaste utrullning (' + fb.name + ')'; }
+  if (a2 === null) { a2 = 0; src2 = 'saknas, friktion försummad'; warns.push('Utan friktionsdata blir J något för högt. Gör en vanlig utrullning först eller låt snöret släppa.'); }
+  if (P.peak > 30) warns.push('Toppvarvet ' + peak.toFixed(1) + ' rad/s är nära gyrots mättningsgräns. Kortare snöre eller lättare vikt ger säkrare värde.');
+  if (f1.r2 < 0.97) warns.push('Fallet var inte jämnt accelererat (R² = ' + f1.r2.toFixed(3) + '). Kontrollera att snöret inte hakade upp sig.');
+  const J = m * r * (G0 - r * a1) / (a1 + a2);
+  const share = a2 / (a1 + a2);
+  return { ...P, ok: J > 0 && a1 > 0, msg: J > 0 ? '' : 'Orimligt resultat (J ≤ 0). Kontrollera vikt och omkrets.', J, a1, a2, src2, share, mr2: m * r * r, r2: f1.r2, seg1: [kA * dt, kB * dt, f1], seg2, warns, m, r };
+}
+function latestCoast() {
+  const runs = (S.lastRuns || []).filter(x => x.res).sort((a, b) => b.created.localeCompare(a.created));
+  return runs[0] ? { a: runs[0].res.a, b: runs[0].res.b, name: runs[0].bearing } : null;
+}
+function jHist() { try { return JSON.parse(localStorage.getItem('lt_jhist') || '[]'); } catch { return []; } }
+function showInertia(rec) {
+  const p = jParams(); if (!p) { showJ('Fyll i fallvikt och däckomkrets.', 'bad'); return; }
+  const r = analyzeInertia(rec.g, p.m, p.r, latestCoast());
+  $('#jRes').hidden = false;
+  const msgs = [];
+  if (!r.ok) msgs.push(r.msg);
+  if (r.warns) msgs.push(...r.warns);
+  showJ(msgs.join(' '), r.ok ? (msgs.length ? 'warn' : null) : 'bad');
+  const G = $('#jGrid'); G.innerHTML = '';
+  const add = (v, l) => { const d = document.createElement('div'); const b = document.createElement('b'); b.textContent = v; const s = document.createElement('span'); s.textContent = l; d.append(b, s); G.append(d); };
+  let hist = jHist();
+  if (r.ok) {
+    hist.push({ t: Date.now(), J: r.J, m: p.m, r: p.r }); hist = hist.slice(-10);
+    try { localStorage.setItem('lt_jhist', JSON.stringify(hist)); } catch {}
+    add(r.J.toFixed(4) + ' kg·m²', 'Tröghetsmoment J');
+    add(fmt(r.a1, 2) + ' rad/s²', 'α₁ under fallet');
+    add(fmt(r.a2, 3) + ' rad/s²', 'α₂ friktion, ' + r.src2);
+    add((r.share * 100).toFixed(1) + ' %', 'Friktionens andel av korrektionen');
+    add(r.mr2.toFixed(4) + ' kg·m²', 'Viktens bidrag m·r² (dras av)');
+    add(r.r2.toFixed(4), 'R², fallet');
+  }
+  if (r.peak) add(r.peak.toFixed(1) + ' rad/s', 'Toppvarv');
+  if (r.fs) add(Math.round(r.fs) + ' Hz', 'Sampling (' + rec.src + ')');
+  const recent = hist.filter(h => Math.abs(h.m - p.m) < 1e-6 && Math.abs(h.r - p.r) < 1e-6).slice(-3);
+  if (recent.length >= 2) {
+    const mean = recent.reduce((a, h) => a + h.J, 0) / recent.length;
+    const sd = Math.sqrt(recent.reduce((a, h) => a + (h.J - mean) ** 2, 0) / (recent.length - 1));
+    S.jUse = mean; $('#jAvg').textContent = 'Medel av ' + recent.length + ' senaste: ' + mean.toFixed(4) + ' ± ' + sd.toFixed(4) + ' (' + (sd / mean * 100).toFixed(1) + ' %)';
+  } else { S.jUse = r.ok ? r.J : null; $('#jAvg').textContent = r.ok ? 'Gör två mätningar till för ett medelvärde.' : ''; }
+  $('#btnUseJ').hidden = !S.jUse; if (S.jUse) $('#btnUseJ').textContent = 'Använd J = ' + S.jUse.toFixed(4);
+  if (r.s) {
+    const xs = [], ys = []; const st = Math.max(1, Math.floor(r.N / 600));
+    for (let k = 0; k < r.N; k += st) { xs.push(k * r.dt); ys.push(r.s[k]); }
+    const sets = [{ xs, ys, color: '--accent' }], leg = [['--accent', 'ω']];
+    if (r.ok) {
+      const [t0, t1, f] = r.seg1; sets.push({ xs: [t0, t1], ys: [f.a + f.b * t0, f.a + f.b * t1], color: '--s2', width: 3 }); leg.push(['--s2', 'fall α₁']);
+      if (r.seg2) { const [u0, u1, f2] = r.seg2; sets.push({ xs: [u0, u1], ys: [f2.a + f2.b * u0, f2.a + f2.b * u1], color: '--s3', width: 3 }); leg.push(['--s3', 'friktion α₂']); }
+    }
+    chart($('#cvJ'), sets, { xl: 't (s)', yl: 'ω (rad/s)', ymin: 0, legend: leg });
+  }
+}
+$('#btnUseJ').addEventListener('click', () => {
+  if (!S.jUse) return; $('#J').value = S.jUse.toFixed(4); saveSet();
+  showJ('J = ' + S.jUse.toFixed(4) + ' kg·m² används nu för nya utrullningar. Redan sparade körningar behåller sitt gamla J.', null);
+});
+
+/* ---------- export / import ---------- */
+function download(name, text, type) {
+  const blob = new Blob([text], { type }); const u = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = u; a.download = name; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 5000);
+}
+function safeName(s) { return (s || 'korning').replace(/[^\wåäöÅÄÖ-]+/g, '_').slice(0, 40); }
+function exportCsv(run) {
+  const L = ['# Lagertest Utrullning', '# lager;' + run.bearing, '# anteckning;' + (run.note || ''), '# datum;' + run.created, '# J_kgm2;' + run.J, '# R_m;' + run.R, '# kalla;' + run.src];
+  if (run.res) L.push('# T15_Nm;' + run.res.T15, '# a_s-2;' + run.res.a, '# b_s-1;' + run.res.b, '# r2;' + run.res.r2, '# utrullning_s;' + run.res.coast);
+  L.push('strom,t_s,x,y,z');
+  const g = run.g; for (let i = 0; i < g.t.length; i++) L.push(['gyro_rad_s', g.t[i].toFixed(5), g.x[i].toFixed(5), g.y[i].toFixed(5), g.z[i].toFixed(5)].join(','));
+  const a = run.a; for (let i = 0; i < a.t.length; i++) L.push(['acc_m_s2', a.t[i].toFixed(5), a.x[i].toFixed(4), a.y[i].toFixed(4), a.z[i].toFixed(4)].join(','));
+  download(safeName(run.bearing) + '_' + run.created.slice(0, 16).replace(/[:T]/g, '-') + '.csv', L.join('\n'), 'text/csv');
+}
+$('#btnExportAll').addEventListener('click', async () => {
+  const runs = await dbAll(); download('lagertest_alla_' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify({ format: 'lagertest-v1', runs }), 'application/json');
+});
+$('#fileImport').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text()); const runs = Array.isArray(d) ? d : d.runs;
+    let c = 0; for (const r of runs || []) { if (r && r.id && r.g && r.g.t) { await dbPut(r); c++; } }
+    setStatus(c + ' körningar importerade', 'ok'); await renderRuns();
+  } catch (err) { setStatus('Import misslyckades', 'bad'); showLive('Filen kunde inte läsas: ' + err.message, 'bad'); }
+  e.target.value = '';
+});
+
+/* ---------- lista & jämförelse ---------- */
+const selected = new Set();
+async function renderRuns() {
+  let runs = [];
+  try { runs = await dbAll(); } catch (e) { $('#emptyRuns').textContent = 'Telefonens lagring är inte tillgänglig (privat läge?). Exportera CSV efter varje mätning.'; return; }
+  runs.sort((a, b) => b.created.localeCompare(a.created));
+  S.lastRuns = runs;
+  $('#emptyRuns').hidden = runs.length > 0;
+  const ul = $('#runList'); ul.innerHTML = '';
+  for (const r of runs) {
+    if (!r.res) { const z = analyze(r); r.res = z.ok ? { peak: z.peak, a: z.a, b: z.b, r2: z.r2, T15: z.T15, coast: z.coast, wHi: z.wHi, wLo: z.wLo, P50: z.P50, fs: z.fs } : null; }
+    const li = document.createElement('li');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'cb_' + r.id; cb.checked = selected.has(r.id);
+    cb.setAttribute('aria-label', 'Jämför ' + r.bearing);
+    cb.addEventListener('change', () => { cb.checked ? selected.add(r.id) : selected.delete(r.id); renderCmp(runs); });
+    const t = document.createElement('button'); t.className = 't'; t.style.cssText = 'text-align:left;border:0;background:none;padding:0';
+    const b = document.createElement('b'); b.textContent = r.bearing + (r.note ? ' · ' + r.note : '');
+    const sm = document.createElement('small');
+    sm.textContent = (d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'))(new Date(r.created)) +'  T15 ' + (r.res ? fmt(r.res.T15 * 1000, 1) + ' mNm' : '–') + '  ' + (r.res ? fmt(r.res.coast, 1) + ' s' : '');
+    t.append(b, sm); t.addEventListener('click', () => { showResult(r, false); $('#secRes').scrollIntoView(); });
+    const del = document.createElement('button'); del.className = 'danger'; del.textContent = 'Ta bort'; let arm = 0;
+    del.addEventListener('click', async () => {
+      if (Date.now() - arm < 3000) { await dbDel(r.id); selected.delete(r.id); renderRuns(); return; }
+      arm = Date.now(); del.textContent = 'Säker?'; setTimeout(() => { del.textContent = 'Ta bort'; }, 3000);
+    });
+    li.append(cb, t, del); ul.append(li);
+  }
+  renderCmp(runs);
+}
+function renderCmp(runs) {
+  const sel = runs.filter(r => selected.has(r.id) && r.res);
+  $('#secCmp').hidden = sel.length < 1;
+  if (!sel.length) return;
+  const level = Math.min(...sel.map(r => r.res.peak)) * 0.9;
+  const sets = [], leg = [];
+  sel.forEach((r, i) => {
+    const z = analyze(r); if (!z.s) return;
+    let k0 = z.ip; while (k0 < z.N && z.s[k0] > level) k0++;
+    const xs = [], ys = []; const st = Math.max(1, Math.floor((z.N - k0) / 500));
+    for (let k = k0; k < z.N; k += st) { xs.push((k - k0) * z.dt); ys.push(z.s[k]); }
+    const c = SERIES[i % SERIES.length]; sets.push({ xs, ys, color: c, width: 2 }); leg.push([c, r.bearing + (r.note ? ' · ' + r.note : '')]);
+  });
+  chart($('#cvCmp'), sets, { xl: 't från ' + level.toFixed(1) + ' rad/s (s)', yl: 'ω (rad/s)', ymin: 0, xmin: 0, legend: leg });
+  $('#cmpNote').textContent = 'Kurvorna är synkade där de passerar ' + level.toFixed(1) + ' rad/s. Brantare kurva betyder mer friktion. Jämför bara körningar med samma J.';
+  const tb = $('#cmpTbl'); tb.innerHTML = '';
+  const hd = document.createElement('tr'); ['Körning', 'T15 mNm', 'Utrullning s', 'a s⁻²', 'b s⁻¹', 'R²', 'J'].forEach(h => { const th = document.createElement('th'); th.textContent = h; hd.append(th); }); tb.append(hd);
+  const ref = sel[0].res.T15;
+  sel.forEach((r, i) => {
+    const tr = document.createElement('tr');
+    const c0 = document.createElement('td'); const sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = 'var(' + SERIES[i % SERIES.length] + ')';
+    c0.append(sw, document.createTextNode(r.bearing)); tr.append(c0);
+    const pct = i && ref ? ' (' + ((r.res.T15 / ref - 1) * 100 >= 0 ? '+' : '') + ((r.res.T15 / ref - 1) * 100).toFixed(0) + ' %)' : '';
+    [fmt(r.res.T15 * 1000, 1) + pct, fmt(r.res.coast, 1) + ' (' + r.res.wHi + '→' + r.res.wLo + ')', fmt(r.res.a, 3), fmt(r.res.b, 4), r.res.r2.toFixed(2), r.J].forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.append(td); });
+    tb.append(tr);
+  });
+}
+
+/* ---------- diagram ---------- */
+function niceTicks(min, max, n = 5) {
+  const span = max - min || 1; const raw = span / n; const mag = 10 ** Math.floor(Math.log10(raw)); const f = raw / mag;
+  const step = (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * mag; const out = [];
+  for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-6; v += step) out.push(+v.toFixed(10));
+  return { out, step };
+}
+function chart(cv, sets, o = {}) {
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight; if (!W || !H) return;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, H);
+  const css = getComputedStyle(document.documentElement); const col = n => css.getPropertyValue(n).trim();
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const s of sets) for (let i = 0; i < s.xs.length; i++) { const x = s.xs[i], y = s.ys[i]; if (!isFinite(x) || !isFinite(y)) continue; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  c.font = '11px ' + col('--sans');
+  if (!isFinite(x0)) { c.fillStyle = col('--muted'); c.fillText('Ingen data än', 10, H / 2); return; }
+  if (o.xmin !== undefined) x0 = Math.min(x0, o.xmin); if (o.ymin !== undefined) y0 = Math.min(y0, o.ymin);
+  if (x1 === x0) x1 = x0 + 1; if (y1 === y0) y1 = y0 + 1;
+  const yt = niceTicks(y0, y1, 4); y1 = Math.max(y1, yt.out[yt.out.length - 1] || y1); if (yt.out[yt.out.length - 1] < y1) { y1 = yt.out[yt.out.length - 1] + yt.step; yt.out.push(y1); }
+  const xt = niceTicks(x0, x1, 5);
+  const legH = o.legend ? 18 : 0;
+  const pl = 42, pr = 10, pt = 8 + legH, pb = 32;
+  const X = x => pl + (x - x0) / (x1 - x0) * (W - pl - pr), Y = y => H - pb - (y - y0) / (y1 - y0) * (H - pt - pb);
+  c.strokeStyle = col('--grid'); c.lineWidth = 1; c.fillStyle = col('--muted');
+  c.textAlign = 'right'; c.textBaseline = 'middle';
+  for (const v of yt.out) { if (v < y0 - 1e-9 || v > y1 + 1e-9) continue; const y = Math.round(Y(v)) + .5; c.beginPath(); c.moveTo(pl, y); c.lineTo(W - pr, y); c.stroke(); c.fillText(+v.toPrecision(4), pl - 6, y); }
+  c.textAlign = 'center'; c.textBaseline = 'top';
+  for (const v of xt.out) { if (v < x0 - 1e-9 || v > x1 + 1e-9) continue; const x = Math.round(X(v)) + .5; c.beginPath(); c.moveTo(x, pt); c.lineTo(x, H - pb); c.stroke(); c.fillText(+v.toPrecision(4), x, H - pb + 4); }
+  c.strokeStyle = col('--line'); c.beginPath(); c.moveTo(pl, H - pb + .5); c.lineTo(W - pr, H - pb + .5); c.stroke();
+  if (o.xl) { c.textAlign = 'right'; c.textBaseline = 'bottom'; c.fillText(o.xl, W - pr, H - 1); }
+  if (o.yl) { c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText(o.yl, pl + 4, pt); }
+  for (const s of sets) {
+    const cc = s.color.startsWith('--') ? col(s.color) : s.color;
+    if (s.dots) { c.fillStyle = cc; c.globalAlpha = .45; for (let i = 0; i < s.xs.length; i++) { c.beginPath(); c.arc(X(s.xs[i]), Y(s.ys[i]), 1.6, 0, 7); c.fill(); } c.globalAlpha = 1; continue; }
+    c.strokeStyle = cc; c.lineWidth = s.width || 1.6; c.lineJoin = 'round'; c.beginPath();
+    let started = false; for (let i = 0; i < s.xs.length; i++) { const x = X(s.xs[i]), y = Y(s.ys[i]); if (!started) { c.moveTo(x, y); started = true; } else c.lineTo(x, y); }
+    c.stroke();
+  }
+  if (o.legend) {
+    let lx = pl; c.textAlign = 'left'; c.textBaseline = 'middle';
+    for (const [cl, txt] of o.legend) { c.fillStyle = col(cl); c.fillRect(lx, 5, 10, 10); c.fillStyle = col('--fg'); const t = txt.length > 22 ? txt.slice(0, 21) + '…' : txt; c.fillText(t, lx + 14, 10); lx += 14 + c.measureText(t).width + 14; if (lx > W - 60) break; }
+  }
+}
+let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (S.view) showResult(S.view, !$('#btnSave').hidden); renderRuns(); }, 200); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (S.view) showResult(S.view, !$('#btnSave').hidden); renderRuns(); });
+
+window.__mainOK = true;
+diag('Huvudskript OK');
+chart($('#cvLive'), [], {});
+renderRuns().catch(e => diag('Lagring: ' + (e && e.message || e), true));
+if (!window.isSecureContext) showLive('Öppna sidan via https://, annars blockerar webbläsaren sensorerna.', 'warn');
+</script>
+</body>
+</html>

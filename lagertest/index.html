@@ -156,6 +156,10 @@ ol.how{margin:6px 0 0;padding-left:20px;font-size:.88rem;display:flex;flex-direc
     <div class="res" id="resGrid"></div>
     <canvas id="cvRes"></canvas>
     <canvas id="cvFit" class="tall" style="margin-top:8px"></canvas>
+    <div class="grid2" style="margin-top:10px">
+      <label>Lager / test-ID<input id="editBearing" autocomplete="off"></label>
+      <label>J för denna körning (kg·m²)<input id="editJ" type="number" step="0.0001" min="0.0001" inputmode="decimal"></label>
+    </div>
     <label style="margin-top:10px">Anteckning<input id="note" placeholder="t.ex. körning 2, 18 °C" autocomplete="off"></label>
     <div class="row" style="margin-top:10px">
       <button class="primary" id="btnSave">Spara körning</button>
@@ -203,7 +207,7 @@ function diag(msg, isErr) {
 }
 window.addEventListener('error', function (e) { diag((e.message || 'okänt fel') + ' @' + (e.lineno || '?') + ':' + (e.colno || '?'), true); });
 window.addEventListener('unhandledrejection', function (e) { var r = e.reason; diag('Ohanterat löfte: ' + (r && (r.name ? r.name + ': ' : '') + (r && r.message || r)), true); });
-diag('Sidversion 2026-10-23c');
+diag('Sidversion 2026-10-26');
 diag('UA: ' + navigator.userAgent);
 diag('https=' + (window.isSecureContext === true) + ' standalone=' + (navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)));
 document.addEventListener('DOMContentLoaded', function () {
@@ -424,17 +428,27 @@ function analyze(run) {
   const hi = peak * 0.95, lo = Math.max(1.5, 0.08 * peak);
   let i0 = ip; while (i0 < N - 1 && s[i0] > hi) i0++;
   let i1 = i0; while (i1 < N - 1 && s[i1] > lo) i1++;
-  const m = 5;
-  if (i1 - i0 < 3 * m) return { ...base, ok: false, msg: 'Utrullningen blev för kort att analysera. Låt hjulet rulla ut fritt.' };
-  const px = [], py = [];
-  for (let k = i0 + m; k <= i1 - m; k++) { px.push(s[k]); py.push(-(s[k + m] - s[k - m]) / (2 * m * dt)); }
+  // Energimetod per helt varv: α_medel = (ω1² − ω2²) / (2·2π).
+  // Obalans (ventil, telefonens egen massa) ger ett gravitationsmoment som växlar tecken under varvet
+  // och gör momentan dω/dt mycket brusig vid låga varv. Över ett helt varv är dess arbete noll och tar ut sig.
+  const th = new Float64Array(N);
+  for (let k = 1; k < N; k++) th[k] = th[k - 1] + (w[k] + w[k - 1]) / 2 * dt;
+  const wAt = target => {
+    let lo2 = 0, hi2 = N - 1; while (hi2 - lo2 > 1) { const mid = (lo2 + hi2) >> 1; if (th[mid] < target) lo2 = mid; else hi2 = mid; }
+    const d = th[hi2] - th[lo2]; const f = d > 0 ? (target - th[lo2]) / d : 0;
+    return w[lo2] + (w[hi2] - w[lo2]) * f;
+  };
+  const REV = 2 * Math.PI, px = [], py = [];
+  for (let tc = th[i0]; tc + REV <= th[i1]; tc += REV) { const w1 = wAt(tc), w2 = wAt(tc + REV); px.push((w1 + w2) / 2); py.push((w1 * w1 - w2 * w2) / (2 * REV)); }
+  if (px.length < 5) return { ...base, ok: false, msg: 'Bara ' + px.length + ' hela varv i utrullningen. Snurra upp hjulet mer och låt det rulla ut fritt.' };
   const L = px.length; let sx = 0, sy = 0, sxx = 0, sxy = 0;
   for (let k = 0; k < L; k++) { sx += px[k]; sy += py[k]; sxx += px[k] * px[k]; sxy += px[k] * py[k]; }
   const den = L * sxx - sx * sx;
   const b = den ? (L * sxy - sx * sy) / den : 0, a = (sy - b * sx) / L;
-  let ssr = 0, sst = 0; const my = sy / L;
-  for (let k = 0; k < L; k++) { const e = py[k] - (a + b * px[k]); ssr += e * e; sst += (py[k] - my) ** 2; }
-  const r2 = sst > 0 ? 1 - ssr / sst : 0;
+  let ssr = 0; const my = sy / L;
+  for (let k = 0; k < L; k++) { const e = py[k] - (a + b * px[k]); ssr += e * e; }
+  const rel = my > 0 ? Math.sqrt(ssr / L) / my : 1;  // relativ spridning kring a + b·ω
+  const revs = L;
   const cross = lv => { for (let k = ip; k < N; k++) if (s[k] <= lv) return k * dt; return null; };
   let wHi = peak >= 26 ? 25 : Math.floor(peak * 0.9), wLo = 5;
   if (wHi <= 8) wLo = Math.max(1, Math.round(wHi * 0.4));
@@ -447,20 +461,22 @@ function analyze(run) {
   const sat = rawMax > 20 && nearMax > 8;
   const v50 = 50 / 3.6, w50 = v50 / run.R;
   const P50 = J * (a + b * w50) * w50;
-  return { ...base, ok: true, a, b, r2, Tc: J * a, cv: J * b, T15, extrap15: peak * 0.95 < wRef, coast, wHi, wLo, P50, w50, sat,
+  return { ...base, ok: true, a, b, rel, revs, Tc: J * a, cv: J * b, T15, extrap15: peak * 0.95 < wRef, coast, wHi, wLo, P50, w50, sat,
            seg: [i0 * dt, i1 * dt], px, py };
 }
 
+const ANALYS_V = 2;
+function resOf(r) { return r.ok ? { v: ANALYS_V, peak: r.peak, a: r.a, b: r.b, rel: r.rel, revs: r.revs, T15: r.T15, coast: r.coast, wHi: r.wHi, wLo: r.wLo, P50: r.P50, fs: r.fs, sat: r.sat } : null; }
 function fmt(v, d = 3) { return v === null || v === undefined || !isFinite(v) ? '–' : (Math.abs(v) < 0.01 && v !== 0 ? v.toExponential(2) : v.toFixed(d)); }
 
 function showResult(run, fresh) {
   const r = analyze(run);
-  run.res = r.ok ? { peak: r.peak, a: r.a, b: r.b, r2: r.r2, T15: r.T15, coast: r.coast, wHi: r.wHi, wLo: r.wLo, P50: r.P50, fs: r.fs, sat: r.sat } : null;
+  run.res = resOf(r);
   $('#secRes').hidden = false;
   const msgs = [];
   if (!r.ok) msgs.push([r.msg, 'bad']);
   if (r.ok && r.sat) msgs.push(['Gyrot verkar ha mättat nära toppvarvet (' + r.peak.toFixed(1) + ' rad/s). Analysen använder bara delen under 95 % av toppen, men snurra gärna lite långsammare nästa gång.', 'warn']);
-  if (r.ok && r.r2 < 0.5) msgs.push(['Låg anpassning (R² = ' + r.r2.toFixed(2) + '). Kontrollera att hjulet rullade fritt utan att något bromsade ojämnt.', 'warn']);
+  if (r.ok && r.rel > 0.1) msgs.push(['Ojämn utrullning: varven avviker ' + (r.rel * 100).toFixed(0) + ' % från modellen. Kontrollera att inget skrapar eller att hjulet inte stötts till under utrullningen.', 'warn']);
   if (r.ok && r.extrap15) msgs.push(['Toppvarvet var under 15 rad/s, så T vid 15 rad/s är extrapolerat.', 'warn']);
   const rm = $('#resMsg'); rm.hidden = !msgs.length; rm.className = 'msg' + (msgs.length ? ' ' + msgs[0][1] : '');
   rm.textContent = msgs.map(m => m[0]).join(' ');
@@ -472,7 +488,7 @@ function showResult(run, fresh) {
     add(fmt(r.a, 3) + ' s⁻²', 'a (konstant del)');
     add(fmt(r.b, 4) + ' s⁻¹', 'b (hastighetsberoende)');
     add(fmt(r.P50, 1) + ' W', 'Förlust vid 50 km/h (extrapolerat)');
-    add(r.r2.toFixed(3), 'R², linjär anpassning');
+    add((r.rel * 100).toFixed(1) + ' %', 'Spridning kring modellen (' + r.revs + ' varv)');
   }
   add(r.peak ? r.peak.toFixed(1) + ' rad/s' : '–', 'Toppvarv');
   add(r.fs ? Math.round(r.fs) + ' Hz' : '–', 'Sampling (' + run.src + ')');
@@ -488,11 +504,13 @@ function showResult(run, fresh) {
     for (let k = 0; k < r.px.length; k += st) { xs.push(r.px[k]); ys.push(r.py[k]); }
     let xmax = 0; for (const v of r.px) xmax = Math.max(xmax, v);
     chart($('#cvFit'), [{ xs, ys, color: '--muted', dots: true }, { xs: [0, xmax], ys: [r.a, r.a + r.b * xmax], color: '--accent', width: 2 }],
-      { xl: 'ω (rad/s)', yl: '−dω/dt (rad/s²)', xmin: 0, ymin: 0, legend: [['--muted', 'mätning'], ['--accent', 'a + b·ω']] });
+      { xl: 'ω (rad/s)', yl: '−dω/dt (rad/s²)', xmin: 0, ymin: 0, legend: [['--muted', 'per varv'], ['--accent', 'a + b·ω']] });
     $('#cvFit').hidden = false;
   } else $('#cvFit').hidden = true;
   $('#note').value = run.note || '';
-  $('#btnSave').hidden = !fresh; $('#btnDiscard').hidden = !fresh;
+  $('#editBearing').value = run.bearing || ''; $('#editJ').value = run.J;
+  $('#btnSave').textContent = fresh ? 'Spara körning' : 'Spara ändringar';
+  $('#btnDiscard').hidden = !fresh;
   S.view = run;
   if (fresh) $('#secRes').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'auto' : 'smooth' });
 }
@@ -500,7 +518,13 @@ function showResult(run, fresh) {
 $('#btnSave').addEventListener('click', async () => {
   const run = S.view; if (!run) return;
   run.note = $('#note').value.trim();
-  try { await dbPut(run); setStatus('Sparad', 'ok'); $('#btnSave').hidden = true; $('#btnDiscard').hidden = true; await renderRuns(); }
+  run.bearing = $('#editBearing').value.trim() || 'Namnlöst';
+  const nj = +$('#editJ').value; const jChanged = nj > 0 && nj !== run.J; if (nj > 0) run.J = nj;
+  try {
+    await dbPut(run); diag('Sparad ' + run.id + ' J=' + run.J); setStatus('Sparad', 'ok');
+    showResult(run, false); await renderRuns();
+    if (jChanged) setStatus('Sparad, omräknad med nytt J', 'ok');
+  }
   catch (e) { setStatus('Kunde inte spara', 'bad'); showLive('Sparning misslyckades: ' + (e.message || e) + '. Exportera CSV som reserv.', 'bad'); }
 });
 let discardArm = 0;
@@ -650,7 +674,7 @@ function saveBlob(name, blob) {
 function safeName(s) { return (s || 'korning').replace(/[^\wåäöÅÄÖ-]+/g, '_').slice(0, 40); }
 function exportCsv(run) {
   const L = ['# Lagertest Utrullning', '# lager;' + run.bearing, '# anteckning;' + (run.note || ''), '# datum;' + run.created, '# J_kgm2;' + run.J, '# R_m;' + run.R, '# kalla;' + run.src];
-  if (run.res) L.push('# T15_Nm;' + run.res.T15, '# a_s-2;' + run.res.a, '# b_s-1;' + run.res.b, '# r2;' + run.res.r2, '# utrullning_s;' + run.res.coast);
+  if (run.res) L.push('# T15_Nm;' + run.res.T15, '# a_s-2;' + run.res.a, '# b_s-1;' + run.res.b, '# spridning_rel;' + run.res.rel, '# utrullning_s;' + run.res.coast);
   L.push('strom,t_s,x,y,z');
   const g = run.g; for (let i = 0; i < g.t.length; i++) L.push(['gyro_rad_s', g.t[i].toFixed(5), g.x[i].toFixed(5), g.y[i].toFixed(5), g.z[i].toFixed(5)].join(','));
   const a = run.a; for (let i = 0; i < a.t.length; i++) L.push(['acc_m_s2', a.t[i].toFixed(5), a.x[i].toFixed(4), a.y[i].toFixed(4), a.z[i].toFixed(4)].join(','));
@@ -683,7 +707,7 @@ async function renderRuns() {
   $('#emptyRuns').hidden = runs.length > 0;
   const ul = $('#runList'); ul.innerHTML = '';
   for (const r of runs) {
-    if (!r.res) { const z = analyze(r); r.res = z.ok ? { peak: z.peak, a: z.a, b: z.b, r2: z.r2, T15: z.T15, coast: z.coast, wHi: z.wHi, wLo: z.wLo, P50: z.P50, fs: z.fs } : null; }
+    if (!r.res || r.res.v !== ANALYS_V) r.res = resOf(analyze(r));  // räkna om sparade körningar med aktuell analys
     const li = document.createElement('li');
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'cb_' + r.id; cb.checked = selected.has(r.id);
     cb.setAttribute('aria-label', 'Jämför ' + r.bearing);
@@ -718,14 +742,14 @@ function renderCmp(runs) {
   chart($('#cvCmp'), sets, { xl: 't från ' + level.toFixed(1) + ' rad/s (s)', yl: 'ω (rad/s)', ymin: 0, xmin: 0, legend: leg });
   $('#cmpNote').textContent = 'Kurvorna är synkade där de passerar ' + level.toFixed(1) + ' rad/s. Brantare kurva betyder mer friktion. Jämför bara körningar med samma J.';
   const tb = $('#cmpTbl'); tb.innerHTML = '';
-  const hd = document.createElement('tr'); ['Körning', 'T15 mNm', 'Utrullning s', 'a s⁻²', 'b s⁻¹', 'R²', 'J'].forEach(h => { const th = document.createElement('th'); th.textContent = h; hd.append(th); }); tb.append(hd);
+  const hd = document.createElement('tr'); ['Körning', 'T15 mNm', 'Utrullning s', 'a s⁻²', 'b s⁻¹', 'Spridn.', 'J'].forEach(h => { const th = document.createElement('th'); th.textContent = h; hd.append(th); }); tb.append(hd);
   const ref = sel[0].res.T15;
   sel.forEach((r, i) => {
     const tr = document.createElement('tr');
     const c0 = document.createElement('td'); const sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = 'var(' + SERIES[i % SERIES.length] + ')';
     c0.append(sw, document.createTextNode(r.bearing)); tr.append(c0);
     const pct = i && ref ? ' (' + ((r.res.T15 / ref - 1) * 100 >= 0 ? '+' : '') + ((r.res.T15 / ref - 1) * 100).toFixed(0) + ' %)' : '';
-    [fmt(r.res.T15 * 1000, 1) + pct, fmt(r.res.coast, 1) + ' (' + r.res.wHi + '→' + r.res.wLo + ')', fmt(r.res.a, 3), fmt(r.res.b, 4), r.res.r2.toFixed(2), r.J].forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.append(td); });
+    [fmt(r.res.T15 * 1000, 1) + pct, fmt(r.res.coast, 1) + ' (' + r.res.wHi + '→' + r.res.wLo + ')', fmt(r.res.a, 3), fmt(r.res.b, 4), (r.res.rel * 100).toFixed(1) + ' %', r.J].forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.append(td); });
     tb.append(tr);
   });
 }

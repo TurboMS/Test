@@ -6,7 +6,9 @@ Telefonen fästs på navet, hjulet snurras upp och får rulla ut fritt. Gyrot lo
 ## Fysik
 - Rörelseekvation vid fri utrullning: J·dω/dt = −T(ω).
 - Modell: T(ω) = J·(a + b·ω). a = konstant friktion (lager, tätning, bromsdrag), b = hastighetsberoende (fett, luft).
-- a och b fås ur linjär anpassning av −dω/dt mot ω i utrullningsdelen (mellan 95 % av toppvarvet och max(1,5 rad/s; 8 % av toppen)).
+- a och b fås ur linjär anpassning av α mot ω i utrullningsdelen (mellan 95 % av toppvarvet och max(1,5 rad/s; 8 % av toppen)).
+- α beräknas per helt varv med energimetoden: α = (ω₁² − ω₂²) / (2·2π), ω vid varvets början och slut, vinkeln θ = ∫ω dt. Obalans (ventil, telefonens massa) ger ett gravitationsmoment m·g·e·sin θ som gör momentan dω/dt mycket brusig vid låga varv men vars arbete över ett helt varv är noll. (Före 2026-10-26: centraldifferens över 0,2 s, vilket gav R² ≈ 0,05–0,2 på riktig data.)
+- Kvalitetsmått: relativ spridning = rms(α − (a + b·ω)) / medel(α). Varning över 10 %. Riktig data 2026-10-26: 1,6–2,1 %.
 - ω = |gyrovektor|, så telefonens orientering och placering spelar ingen roll (stel kropp).
 - Nyckeltal: T vid 15 rad/s (mNm), utrullningstid 25 → 5 rad/s, förlust vid 50 km/h P = T·ω (extrapolerat).
 - Gyrot mättar typiskt vid ±2000 °/s ≈ 35 rad/s. Sidan varnar om platå nära toppen.
@@ -48,6 +50,7 @@ Telefonen fästs på navet, hjulet snurras upp och får rulla ut fritt. Gyrot lo
 
 ## Ändringslogg
 Regel: systembeskrivningen uppdateras vid varje kodändring.
+- 2026-10-26: Analysen byter till energimetod per helt varv (tar ut obalansens gravitationsmoment). R² ersatt med relativ spridning, eftersom R² bara mäter hur mycket av variationen lutningen b förklarar och blir lågt när friktionen är nästan konstant. Sparade körningar räknas om automatiskt (analysversion 2). Lager-ID och J kan ändras på sparade körningar, resultatet räknas om. Sidversion 2026-10-26.
 - 2026-10-23c: Export via delningsmenyn (Web Share API med filer) så att CSV/JSON kan sparas direkt i Google Drive eller annan app. Faller tillbaka på nedladdning om delning saknas. JSON-filnamn får datum och klockslag. Rekommenderad mappstruktur i Drive: Kart/Lagertest/Backup (JSON) och Kart/Lagertest/Rådata (CSV).
 - 2026-10-23b: Safari-fix. Rörelsetillstånd (DeviceMotionEvent.requestPermission) begärs nu synkront i själva knapptrycket. Borttagen syntax som äldre Safari inte kan tolka (??=, dateStyle). Ny felsökningslogg på sidan (ES5-skript som fångar alla fel, sensorstatus, första sampel, antal sampel) med knapp för att kopiera loggen.
 - 2026-10-23: J-mätning med fallvikt (friktionskompenserad i samma körning), medelvärde av 3 mätningar, knapp för att använda J.

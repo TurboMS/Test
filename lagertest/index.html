@@ -90,7 +90,7 @@ ol.how{margin:6px 0 0;padding-left:20px;font-size:.88rem;display:flex;flex-direc
     <div class="grid2">
       <label>Lager / test-ID<input id="bearing" placeholder="t.ex. Bakaxel H nytt" autocomplete="off"></label>
       <label>Tröghetsmoment J (kg·m²)<input id="J" type="number" step="0.001" min="0.001" inputmode="decimal"></label>
-      <label>Däckradie R (m)<input id="R" type="number" step="0.005" min="0.05" inputmode="decimal"></label>
+      <label>Däckomkrets C (cm)<input id="C" type="number" step="0.1" min="20" inputmode="decimal" placeholder="mät med snöret"></label>
       <label>Auto-stopp<select id="auto"><option value="1">På (när hjulet stannat)</option><option value="0">Av</option></select></label>
     </div>
     <details style="margin-top:10px">
@@ -109,14 +109,13 @@ ol.how{margin:6px 0 0;padding-left:20px;font-size:.88rem;display:flex;flex-direc
     <h2>Mät tröghetsmoment J</h2>
     <div class="grid2">
       <label>Fallvikt m (kg)<input id="jm" type="number" step="0.01" min="0.05" inputmode="decimal" placeholder="t.ex. 0.50"></label>
-      <label>Däckomkrets C (cm)<input id="jc" type="number" step="0.1" min="20" inputmode="decimal" placeholder="mät med snöret"></label>
     </div>
-    <p class="sub" id="jr" style="margin:8px 0 0">Lindningsradie r = C / 2π: –</p>
+    <p class="sub" id="jr" style="margin:8px 0 0">Däckomkretsen tas från Inställningar. Lindningsradie r = C / 2π: –</p>
     <details style="margin-top:10px">
       <summary>Så gör du</summary>
       <ol class="how">
         <li>Kedjan av, karten på pallbock så att ett bakhjul hänger fritt med minst 1 m fri höjd under.</li>
-        <li>Mät däckets omkrets med själva snöret mitt på slitbanan och skriv in den. Väg vikten (0,5–1 kg passar).</li>
+        <li>Mät däckets omkrets med själva snöret mitt på slitbanan och skriv in den under Inställningar. Väg vikten (0,5–1 kg passar).</li>
         <li>Fäst snöret i däcket med en lös tejpbit eller en ögla över ventilen, så att det släpper när det rullats av. Linda upp 1–1,5 m.</li>
         <li>Fäst telefonen på navet, tryck <b>Starta J-mätning</b>, håll hjulet still och släpp. Låt hjulet rulla fritt efter att snöret släppt.</li>
         <li>Mätningen stoppar själv 4 s efter toppvarvet. Gör 3 mätningar och använd medelvärdet.</li>
@@ -159,6 +158,7 @@ ol.how{margin:6px 0 0;padding-left:20px;font-size:.88rem;display:flex;flex-direc
     <div class="grid2" style="margin-top:10px">
       <label>Lager / test-ID<input id="editBearing" autocomplete="off"></label>
       <label>J för denna körning (kg·m²)<input id="editJ" type="number" step="0.0001" min="0.0001" inputmode="decimal"></label>
+      <label>Däckomkrets för denna körning (cm)<input id="editC" type="number" step="0.1" min="20" inputmode="decimal"></label>
     </div>
     <label style="margin-top:10px">Anteckning<input id="note" placeholder="t.ex. körning 2, 18 °C" autocomplete="off"></label>
     <div class="row" style="margin-top:10px">
@@ -207,7 +207,7 @@ function diag(msg, isErr) {
 }
 window.addEventListener('error', function (e) { diag((e.message || 'okänt fel') + ' @' + (e.lineno || '?') + ':' + (e.colno || '?'), true); });
 window.addEventListener('unhandledrejection', function (e) { var r = e.reason; diag('Ohanterat löfte: ' + (r && (r.name ? r.name + ': ' : '') + (r && r.message || r)), true); });
-diag('Sidversion 2026-10-26');
+diag('Sidversion 2026-10-27');
 diag('UA: ' + navigator.userAgent);
 diag('https=' + (window.isSecureContext === true) + ' standalone=' + (navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)));
 document.addEventListener('DOMContentLoaded', function () {
@@ -228,12 +228,23 @@ const D2R = Math.PI / 180;
 const SERIES = ['--accent', '--s2', '--s3', '--s4'];
 
 /* ---------- inställningar (localStorage, per telefon) ---------- */
-const DEF = { bearing: '', J: 0.06, R: 0.14, auto: '1' };
-function loadSet() { try { return Object.assign({}, DEF, JSON.parse(localStorage.getItem('lt_set') || '{}')); } catch { return { ...DEF }; } }
+const DEF = { bearing: '', J: 0.06, C: 81.7, auto: '1' };  // C i cm; 81,7 = Minins rullomkrets i Kartmoln
+const rOf = C => C / 100 / (2 * Math.PI);
+function loadSet() {
+  let s = { ...DEF };
+  try {
+    const o = JSON.parse(localStorage.getItem('lt_set') || '{}'); Object.assign(s, o);
+    if (!o.C) {  // tidigare version sparade radie R; omkretsen från J-mätningen går före
+      const jin = JSON.parse(localStorage.getItem('lt_jin') || '{}');
+      if (+jin.c > 0) s.C = +jin.c; else if (+o.R > 0) s.C = +(o.R * 2 * Math.PI * 100).toFixed(1);
+    }
+  } catch {}
+  return s;
+}
 function saveSet() { try { localStorage.setItem('lt_set', JSON.stringify(curSet())); } catch {} }
-function curSet() { return { bearing: $('#bearing').value.trim(), J: +$('#J').value || DEF.J, R: +$('#R').value || DEF.R, auto: $('#auto').value }; }
-(() => { const s = loadSet(); $('#bearing').value = s.bearing; $('#J').value = s.J; $('#R').value = s.R; $('#auto').value = s.auto; })();
-['#bearing', '#J', '#R', '#auto'].forEach(id => $(id).addEventListener('change', saveSet));
+function curSet() { const C = +$('#C').value || DEF.C; return { bearing: $('#bearing').value.trim(), J: +$('#J').value || DEF.J, C, R: rOf(C), auto: $('#auto').value }; }
+(() => { const s = loadSet(); $('#bearing').value = s.bearing; $('#J').value = s.J; $('#C').value = s.C; $('#auto').value = s.auto; })();
+['#bearing', '#J', '#C', '#auto'].forEach(id => $(id).addEventListener('change', saveSet));
 
 /* ---------- IndexedDB ---------- */
 let dbp = null;
@@ -369,7 +380,7 @@ function stopRec() {
   setStatus('Klar', 'ok');
   if (S.mode === 'inertia') { showInertia({ g: S.g, src: S.src }); return; }
   const set = curSet();
-  S.run = { id: 'r' + Date.now(), created: new Date().toISOString(), bearing: set.bearing || 'Namnlöst', note: '', J: set.J, R: set.R, src: S.src, g: S.g, a: S.a };
+  S.run = { id: 'r' + Date.now(), created: new Date().toISOString(), bearing: set.bearing || 'Namnlöst', note: '', J: set.J, C: set.C, R: set.R, src: S.src, g: S.g, a: S.a };
   showResult(S.run, true);
 }
 // iOS: requestPermission måste anropas synkront i själva klicket, före allt annat
@@ -393,7 +404,7 @@ function liveLoop() {
     const w = Math.hypot(g.x[n - 1], g.y[n - 1], g.z[n - 1]);
     $('#lvW').textContent = w.toFixed(1);
     if (S.mode === 'inertia') $('#jLive').textContent = w.toFixed(1);
-    $('#lvV').textContent = (w * (+$('#R').value || DEF.R) * 3.6).toFixed(0);
+    $('#lvV').textContent = (w * rOf(+$('#C').value || DEF.C) * 3.6).toFixed(0);
     let k = n - 1; while (k > 0 && g.t[n - 1] - g.t[k] < 1) k--;
     const span = g.t[n - 1] - g.t[k]; if (span > 0.2) $('#lvHz').textContent = Math.round((n - 1 - k) / span);
     const xs = [], ys = []; const tEnd = g.t[n - 1];
@@ -508,7 +519,7 @@ function showResult(run, fresh) {
     $('#cvFit').hidden = false;
   } else $('#cvFit').hidden = true;
   $('#note').value = run.note || '';
-  $('#editBearing').value = run.bearing || ''; $('#editJ').value = run.J;
+  $('#editBearing').value = run.bearing || ''; $('#editJ').value = run.J; $('#editC').value = run.C || +(run.R * 2 * Math.PI * 100).toFixed(1);
   $('#btnSave').textContent = fresh ? 'Spara körning' : 'Spara ändringar';
   $('#btnDiscard').hidden = !fresh;
   S.view = run;
@@ -520,6 +531,7 @@ $('#btnSave').addEventListener('click', async () => {
   run.note = $('#note').value.trim();
   run.bearing = $('#editBearing').value.trim() || 'Namnlöst';
   const nj = +$('#editJ').value; const jChanged = nj > 0 && nj !== run.J; if (nj > 0) run.J = nj;
+  const nc = +$('#editC').value; if (nc > 0) { run.C = nc; run.R = rOf(nc); }
   try {
     await dbPut(run); diag('Sparad ' + run.id + ' J=' + run.J); setStatus('Sparad', 'ok');
     showResult(run, false); await renderRuns();
@@ -539,13 +551,13 @@ $('#btnCsvNow').addEventListener('click', () => { if (S.view) exportCsv(S.view);
 /* ---------- tröghetsmoment J (fallvikt) ---------- */
 const G0 = 9.81;
 function jParams() {
-  const m = +$('#jm').value, C = +$('#jc').value;
+  const m = +$('#jm').value, C = +$('#C').value;
   if (!(m > 0) || !(C > 0)) return null;
   return { m, r: C / 100 / (2 * Math.PI) };
 }
-function updJr() { const p = jParams(); $('#jr').textContent = 'Lindningsradie r = C / 2π: ' + (p ? (p.r * 1000).toFixed(1) + ' mm' : '–'); try { localStorage.setItem('lt_jin', JSON.stringify({ m: $('#jm').value, c: $('#jc').value })); } catch {} }
-try { const v = JSON.parse(localStorage.getItem('lt_jin') || '{}'); if (v.m) $('#jm').value = v.m; if (v.c) $('#jc').value = v.c; } catch {}
-['#jm', '#jc'].forEach(id => $(id).addEventListener('input', updJr)); updJr();
+function updJr() { const p = jParams(); $('#jr').textContent = 'Däckomkretsen tas från Inställningar. Lindningsradie r = C / 2π: ' + (p ? (p.r * 1000).toFixed(1) + ' mm' : '–'); try { localStorage.setItem('lt_jin', JSON.stringify({ m: $('#jm').value, c: $('#C').value })); } catch {} }
+try { const v = JSON.parse(localStorage.getItem('lt_jin') || '{}'); if (v.m) $('#jm').value = v.m; } catch {}
+['#jm', '#C'].forEach(id => $(id).addEventListener('input', updJr)); updJr();
 function showJ(t, cls) { const m = $('#jMsg'); m.hidden = !t; m.textContent = t; m.className = 'msg' + (cls ? ' ' + cls : ''); }
 
 function prep(g) {
@@ -615,7 +627,7 @@ function showInertia(rec) {
   const add = (v, l) => { const d = document.createElement('div'); const b = document.createElement('b'); b.textContent = v; const s = document.createElement('span'); s.textContent = l; d.append(b, s); G.append(d); };
   let hist = jHist();
   if (r.ok) {
-    hist.push({ t: Date.now(), J: r.J, m: p.m, r: p.r }); hist = hist.slice(-10);
+    hist.push({ t: Date.now(), J: r.J, m: p.m, r: p.r, C: +$('#C').value, bearing: $('#bearing').value.trim() }); hist = hist.slice(-10);
     try { localStorage.setItem('lt_jhist', JSON.stringify(hist)); } catch {}
     add(r.J.toFixed(4) + ' kg·m²', 'Tröghetsmoment J');
     add(fmt(r.a1, 2) + ' rad/s²', 'α₁ under fallet');
@@ -673,7 +685,7 @@ function saveBlob(name, blob) {
 }
 function safeName(s) { return (s || 'korning').replace(/[^\wåäöÅÄÖ-]+/g, '_').slice(0, 40); }
 function exportCsv(run) {
-  const L = ['# Lagertest Utrullning', '# lager;' + run.bearing, '# anteckning;' + (run.note || ''), '# datum;' + run.created, '# J_kgm2;' + run.J, '# R_m;' + run.R, '# kalla;' + run.src];
+  const L = ['# Lagertest Utrullning', '# lager;' + run.bearing, '# anteckning;' + (run.note || ''), '# datum;' + run.created, '# J_kgm2;' + run.J, '# C_cm;' + (run.C || ''), '# R_m;' + run.R, '# kalla;' + run.src];
   if (run.res) L.push('# T15_Nm;' + run.res.T15, '# a_s-2;' + run.res.a, '# b_s-1;' + run.res.b, '# spridning_rel;' + run.res.rel, '# utrullning_s;' + run.res.coast);
   L.push('strom,t_s,x,y,z');
   const g = run.g; for (let i = 0; i < g.t.length; i++) L.push(['gyro_rad_s', g.t[i].toFixed(5), g.x[i].toFixed(5), g.y[i].toFixed(5), g.z[i].toFixed(5)].join(','));
@@ -685,7 +697,7 @@ $('#btnExportAll').addEventListener('click', async () => {
   const runs = S.lastRuns || await dbAll();
   const d = new Date(), p = n => String(n).padStart(2, '0');
   const stamp = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes());
-  download('lagertest_alla_' + stamp + '.json', JSON.stringify({ format: 'lagertest-v1', exported: d.toISOString(), runs }), 'application/json');
+  download('lagertest_alla_' + stamp + '.json', JSON.stringify({ format: 'lagertest-v1', exported: d.toISOString(), runs, jMeasurements: jHist() }), 'application/json');
 });
 $('#fileImport').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;

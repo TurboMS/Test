@@ -89,6 +89,7 @@ ol.how{margin:6px 0 0;padding-left:20px;font-size:.88rem;display:flex;flex-direc
     <h2>Inställningar</h2>
     <div class="grid2">
       <label>Lager / test-ID<input id="bearing" placeholder="t.ex. Bakaxel H nytt" autocomplete="off"></label>
+      <label>Däck och fälgar<input id="dack" placeholder="t.ex. Torr, standardfälg, körda MKR 8" autocomplete="off"></label>
       <label>Tröghetsmoment J (kg·m²)<input id="J" type="number" step="0.001" min="0.001" inputmode="decimal"></label>
       <label>Däckomkrets C (cm)<input id="C" type="number" step="0.1" min="20" inputmode="decimal" placeholder="mät med snöret"></label>
       <label>Auto-stopp<select id="auto"><option value="1">På (när hjulet stannat)</option><option value="0">Av</option></select></label>
@@ -159,6 +160,7 @@ ol.how{margin:6px 0 0;padding-left:20px;font-size:.88rem;display:flex;flex-direc
       <label>Lager / test-ID<input id="editBearing" autocomplete="off"></label>
       <label>J för denna körning (kg·m²)<input id="editJ" type="number" step="0.0001" min="0.0001" inputmode="decimal"></label>
       <label>Däckomkrets för denna körning (cm)<input id="editC" type="number" step="0.1" min="20" inputmode="decimal"></label>
+      <label>Däck och fälgar för denna körning<input id="editDack" autocomplete="off"></label>
     </div>
     <label style="margin-top:10px">Anteckning<input id="note" placeholder="t.ex. körning 2, 18 °C" autocomplete="off"></label>
     <div class="row" style="margin-top:10px">
@@ -207,7 +209,7 @@ function diag(msg, isErr) {
 }
 window.addEventListener('error', function (e) { diag((e.message || 'okänt fel') + ' @' + (e.lineno || '?') + ':' + (e.colno || '?'), true); });
 window.addEventListener('unhandledrejection', function (e) { var r = e.reason; diag('Ohanterat löfte: ' + (r && (r.name ? r.name + ': ' : '') + (r && r.message || r)), true); });
-diag('Sidversion 2026-10-27');
+diag('Sidversion 2026-10-28');
 diag('UA: ' + navigator.userAgent);
 diag('https=' + (window.isSecureContext === true) + ' standalone=' + (navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)));
 document.addEventListener('DOMContentLoaded', function () {
@@ -228,7 +230,7 @@ const D2R = Math.PI / 180;
 const SERIES = ['--accent', '--s2', '--s3', '--s4'];
 
 /* ---------- inställningar (localStorage, per telefon) ---------- */
-const DEF = { bearing: '', J: 0.06, C: 81.7, auto: '1' };  // C i cm; 81,7 = Minins rullomkrets i Kartmoln
+const DEF = { bearing: '', dack: '', J: 0.06, C: 81.7, auto: '1' };  // C i cm; 81,7 = Minins rullomkrets i Kartmoln
 const rOf = C => C / 100 / (2 * Math.PI);
 function loadSet() {
   let s = { ...DEF };
@@ -242,31 +244,35 @@ function loadSet() {
   return s;
 }
 function saveSet() { try { localStorage.setItem('lt_set', JSON.stringify(curSet())); } catch {} }
-function curSet() { const C = +$('#C').value || DEF.C; return { bearing: $('#bearing').value.trim(), J: +$('#J').value || DEF.J, C, R: rOf(C), auto: $('#auto').value }; }
-(() => { const s = loadSet(); $('#bearing').value = s.bearing; $('#J').value = s.J; $('#C').value = s.C; $('#auto').value = s.auto; })();
-['#bearing', '#J', '#C', '#auto'].forEach(id => $(id).addEventListener('change', saveSet));
+function curSet() { const C = +$('#C').value || DEF.C; return { bearing: $('#bearing').value.trim(), dack: $('#dack').value.trim(), J: +$('#J').value || DEF.J, C, R: rOf(C), auto: $('#auto').value }; }
+(() => { const s = loadSet(); $('#bearing').value = s.bearing; $('#dack').value = s.dack || ''; $('#J').value = s.J; $('#C').value = s.C; $('#auto').value = s.auto; })();
+['#bearing', '#dack', '#J', '#C', '#auto'].forEach(id => $(id).addEventListener('change', saveSet));
 
 /* ---------- IndexedDB ---------- */
 let dbp = null;
 function idb() {
   if (dbp) return dbp;
   dbp = new Promise((res, rej) => {
-    const r = indexedDB.open('lagertest', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('runs', { keyPath: 'id' });
+    const r = indexedDB.open('lagertest', 2);  // v2: även J-mätningar med rådata (store jruns)
+    r.onupgradeneeded = () => { const db = r.result;
+      if (!db.objectStoreNames.contains('runs')) db.createObjectStore('runs', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('jruns')) db.createObjectStore('jruns', { keyPath: 'id' }); };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   });
   return dbp;
 }
-async function tx(mode, fn) {
+async function tx(mode, fn, store = 'runs') {
   const db = await idb();
   return new Promise((res, rej) => {
-    const t = db.transaction('runs', mode); const st = t.objectStore('runs');
+    const t = db.transaction(store, mode); const st = t.objectStore(store);
     const out = fn(st); t.oncomplete = () => res(out && out.result !== undefined ? out.result : out); t.onerror = () => rej(t.error);
   });
 }
 const dbAll = () => tx('readonly', st => st.getAll());
 const dbPut = run => tx('readwrite', st => st.put(run));
 const dbDel = id => tx('readwrite', st => st.delete(id));
+const jAll = () => tx('readonly', st => st.getAll(), 'jruns');
+const jPut = rec => tx('readwrite', st => st.put(rec), 'jruns');
 
 /* ---------- inspelning ---------- */
 const S = { rec: false, g: null, a: null, t0: null, src: '', stopFns: [], wake: null, armSince: null, armed: false, lowSince: null, lastT: 0, run: null };
@@ -380,7 +386,7 @@ function stopRec() {
   setStatus('Klar', 'ok');
   if (S.mode === 'inertia') { showInertia({ g: S.g, src: S.src }); return; }
   const set = curSet();
-  S.run = { id: 'r' + Date.now(), created: new Date().toISOString(), bearing: set.bearing || 'Namnlöst', note: '', J: set.J, C: set.C, R: set.R, src: S.src, g: S.g, a: S.a };
+  S.run = { id: 'r' + Date.now(), created: new Date().toISOString(), bearing: set.bearing || 'Namnlöst', dack: set.dack, note: '', J: set.J, C: set.C, R: set.R, src: S.src, g: S.g, a: S.a };
   showResult(S.run, true);
 }
 // iOS: requestPermission måste anropas synkront i själva klicket, före allt annat
@@ -519,7 +525,7 @@ function showResult(run, fresh) {
     $('#cvFit').hidden = false;
   } else $('#cvFit').hidden = true;
   $('#note').value = run.note || '';
-  $('#editBearing').value = run.bearing || ''; $('#editJ').value = run.J; $('#editC').value = run.C || +(run.R * 2 * Math.PI * 100).toFixed(1);
+  $('#editBearing').value = run.bearing || ''; $('#editJ').value = run.J; $('#editC').value = run.C || +(run.R * 2 * Math.PI * 100).toFixed(1); $('#editDack').value = run.dack || '';
   $('#btnSave').textContent = fresh ? 'Spara körning' : 'Spara ändringar';
   $('#btnDiscard').hidden = !fresh;
   S.view = run;
@@ -532,6 +538,7 @@ $('#btnSave').addEventListener('click', async () => {
   run.bearing = $('#editBearing').value.trim() || 'Namnlöst';
   const nj = +$('#editJ').value; const jChanged = nj > 0 && nj !== run.J; if (nj > 0) run.J = nj;
   const nc = +$('#editC').value; if (nc > 0) { run.C = nc; run.R = rOf(nc); }
+  run.dack = $('#editDack').value.trim();
   try {
     await dbPut(run); diag('Sparad ' + run.id + ' J=' + run.J); setStatus('Sparad', 'ok');
     showResult(run, false); await renderRuns();
@@ -627,7 +634,13 @@ function showInertia(rec) {
   const add = (v, l) => { const d = document.createElement('div'); const b = document.createElement('b'); b.textContent = v; const s = document.createElement('span'); s.textContent = l; d.append(b, s); G.append(d); };
   let hist = jHist();
   if (r.ok) {
-    hist.push({ t: Date.now(), J: r.J, m: p.m, r: p.r, C: +$('#C').value, bearing: $('#bearing').value.trim() }); hist = hist.slice(-10);
+    const jid = 'j' + Date.now(), dack = $('#dack').value.trim(), bearing = $('#bearing').value.trim();
+    hist.push({ t: Date.now(), id: jid, J: r.J, m: p.m, r: p.r, C: +$('#C').value, bearing, dack }); hist = hist.slice(-10);
+    // Rådata sparas så att J-mätningen går att räkna om och spåra (exporteras som jRuns)
+    jPut({ id: jid, created: new Date().toISOString(), bearing, dack, m: p.m, C: +$('#C').value, r: p.r, J: r.J, a1: r.a1, a2: r.a2, a2Source: r.src2,
+           r2: r.r2, peak: r.peak, warns: r.warns || [], src: rec.src, g: rec.g })
+      .then(() => { diag('J-mätning sparad med rådata: ' + jid); return jAll(); }).then(a => { S.lastJRuns = a; })
+      .catch(e => diag('J-mätningen kunde inte sparas: ' + (e && e.message || e), true));
     try { localStorage.setItem('lt_jhist', JSON.stringify(hist)); } catch {}
     add(r.J.toFixed(4) + ' kg·m²', 'Tröghetsmoment J');
     add(fmt(r.a1, 2) + ' rad/s²', 'α₁ under fallet');
@@ -685,7 +698,7 @@ function saveBlob(name, blob) {
 }
 function safeName(s) { return (s || 'korning').replace(/[^\wåäöÅÄÖ-]+/g, '_').slice(0, 40); }
 function exportCsv(run) {
-  const L = ['# Lagertest Utrullning', '# lager;' + run.bearing, '# anteckning;' + (run.note || ''), '# datum;' + run.created, '# J_kgm2;' + run.J, '# C_cm;' + (run.C || ''), '# R_m;' + run.R, '# kalla;' + run.src];
+  const L = ['# Lagertest Utrullning', '# lager;' + run.bearing, '# anteckning;' + (run.note || ''), '# datum;' + run.created, '# J_kgm2;' + run.J, '# dack;' + (run.dack || ''), '# C_cm;' + (run.C || ''), '# R_m;' + run.R, '# kalla;' + run.src];
   if (run.res) L.push('# T15_Nm;' + run.res.T15, '# a_s-2;' + run.res.a, '# b_s-1;' + run.res.b, '# spridning_rel;' + run.res.rel, '# utrullning_s;' + run.res.coast);
   L.push('strom,t_s,x,y,z');
   const g = run.g; for (let i = 0; i < g.t.length; i++) L.push(['gyro_rad_s', g.t[i].toFixed(5), g.x[i].toFixed(5), g.y[i].toFixed(5), g.z[i].toFixed(5)].join(','));
@@ -697,14 +710,16 @@ $('#btnExportAll').addEventListener('click', async () => {
   const runs = S.lastRuns || await dbAll();
   const d = new Date(), p = n => String(n).padStart(2, '0');
   const stamp = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes());
-  download('lagertest_alla_' + stamp + '.json', JSON.stringify({ format: 'lagertest-v1', exported: d.toISOString(), runs, jMeasurements: jHist() }), 'application/json');
+  download('lagertest_alla_' + stamp + '.json', JSON.stringify({ format: 'lagertest-v1', exported: d.toISOString(), runs, jMeasurements: jHist(), jRuns: S.lastJRuns || [] }), 'application/json');
 });
 $('#fileImport').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
   try {
     const d = JSON.parse(await f.text()); const runs = Array.isArray(d) ? d : d.runs;
     let c = 0; for (const r of runs || []) { if (r && r.id && r.g && r.g.t) { await dbPut(r); c++; } }
-    setStatus(c + ' körningar importerade', 'ok'); await renderRuns();
+    let cj = 0; for (const j of (d && d.jRuns) || []) { if (j && j.id && j.g && j.g.t) { await jPut(j); cj++; } }
+    try { S.lastJRuns = await jAll(); } catch {}
+    setStatus(c + ' körningar' + (cj ? ' och ' + cj + ' J-mätningar' : '') + ' importerade', 'ok'); await renderRuns();
   } catch (err) { setStatus('Import misslyckades', 'bad'); showLive('Filen kunde inte läsas: ' + err.message, 'bad'); }
   e.target.value = '';
 });
@@ -816,6 +831,7 @@ window.__mainOK = true;
 diag('Huvudskript OK');
 chart($('#cvLive'), [], {});
 renderRuns().catch(e => diag('Lagring: ' + (e && e.message || e), true));
+jAll().then(a => { S.lastJRuns = a; diag('J-mätningar med rådata: ' + a.length); }).catch(e => diag('J-lagring: ' + (e && e.message || e), true));
 if (!window.isSecureContext) showLive('Öppna sidan via https://, annars blockerar webbläsaren sensorerna.', 'warn');
 </script>
 </body>

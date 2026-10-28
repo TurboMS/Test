@@ -40,6 +40,8 @@ Telefonen fästs på navet, hjulet snurras upp och får rulla ut fritt. Gyrot lo
 - Loggen visas under "Felsökning" och kopieras med "Kopiera logg". Om huvudskriptet inte startar inom 1,5 s loggas det som fel.
 
 ## Lagring
+- J-mätningar med rådata i IndexedDB-store `jruns` (från databasversion 2), exporteras som `jRuns`.
+- Varje körning och J-mätning bär fältet `dack` (däck och fälgar), eftersom J och omkrets gäller en viss däck- och fälgkombination.
 - IndexedDB i telefonens webbläsare (databas `lagertest`, store `runs`). Inställningar i localStorage.
 - Export: CSV per körning (gyro + accelerometer), JSON med alla körningar. Import av JSON.
 - Exporten öppnar systemets delningsmeny (navigator.share med File) där Google Drive kan väljas. JSON-exporten använder redan inlästa körningar så att delningen sker inom klickets användaraktivering (krav i iOS).
@@ -51,6 +53,7 @@ Telefonen fästs på navet, hjulet snurras upp och får rulla ut fritt. Gyrot lo
 
 ## Ändringslogg
 Regel: systembeskrivningen uppdateras vid varje kodändring.
+- 2026-10-28: Fältet "Däck och fälgar" i Inställningar sparas per körning och per J-mätning, kan ändras på sparade körningar och står i CSV-huvudet. J-mätningar sparas med rådata (gyro t/x/y/z, vikt, omkrets, α₁, α₂ och dess källa, varningar) i IndexedDB-store `jruns` (databasversion 2; befintliga körningar behålls vid uppgraderingen) och exporteras som `jRuns` i JSON-exporten, och importeras därifrån. Bakgrund: J-värdena 2026-10-26 saknade rådata. Sidversion 2026-10-28.
 - 2026-10-27: Däckradie R ersatt med däckomkrets C (cm) i Inställningar, eftersom omkretsen kan mätas direkt med snöret. Samma fält används av J-mätningen (eget omkretsfält borttaget). R = C/2π räknas internt. Gamla inställningar migreras: omkretsen från senaste J-mätning går före, annars 2π·R. Omkretsen sparas per körning och kan ändras på sparade körningar. JSON-exporten innehåller nu även J-mätningarna (jMeasurements: J, vikt, radie, omkrets, lager-ID). Påverkar bara km/h-visning och förlust vid 50 km/h; friktionsanalysen (a, b, T15) och J är oberoende av R. Sidversion 2026-10-27.
 - 2026-10-26: Analysen byter till energimetod per helt varv (tar ut obalansens gravitationsmoment). R² ersatt med relativ spridning, eftersom R² bara mäter hur mycket av variationen lutningen b förklarar och blir lågt när friktionen är nästan konstant. Sparade körningar räknas om automatiskt (analysversion 2). Lager-ID och J kan ändras på sparade körningar, resultatet räknas om. Sidversion 2026-10-26.
 - 2026-10-23c: Export via delningsmenyn (Web Share API med filer) så att CSV/JSON kan sparas direkt i Google Drive eller annan app. Faller tillbaka på nedladdning om delning saknas. JSON-filnamn får datum och klockslag. Rekommenderad mappstruktur i Drive: Kart/Lagertest/Backup (JSON) och Kart/Lagertest/Rådata (CSV).
